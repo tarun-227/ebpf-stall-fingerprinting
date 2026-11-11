@@ -1,0 +1,641 @@
+{
+  "config": {
+    "_comment": "Frozen before final evaluation. Repetitions 1-2 tune thresholds and train trees; 3-5 are test only.",
+    "dev_reps": [
+      1,
+      2
+    ],
+    "test_reps": [
+      3,
+      4,
+      5
+    ],
+    "dominance": 0.6,
+    "bootstrap": 1000,
+    "seed": 20261111,
+    "tree": {
+      "max_depth": 4,
+      "min_leaf": 5,
+      "abstain_grid": [
+        0.0,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9
+      ]
+    },
+    "transfer": {
+      "_comment": "I/O workloads trained at 64 KiB sequential, tested at 16 KiB random. Non-I/O workloads have no size, so they stay in training.",
+      "train_filter": {
+        "io_size": 65536,
+        "pattern": "sequential"
+      },
+      "test_filter": {
+        "io_size": 16384,
+        "pattern": "random"
+      },
+      "always_include": [
+        "cpu",
+        "cpu_contended",
+        "sleep",
+        "neighbor_io"
+      ]
+    }
+  },
+  "truth": "expected",
+  "design_vs_reference_agreement": 0.8530433006535948,
+  "main": {
+    "rules/fused": {
+      "macro_f1": 0.8594181029287706,
+      "accuracy": 0.8626543209876543,
+      "abstention": 0.23668981481481483,
+      "hc_error": 0.0642361111111111,
+      "macro_f1_ci": [
+        0.810777200395612,
+        0.8977797653797646
+      ],
+      "forced": {
+        "macro_f1": 0.6461504932527181,
+        "accuracy": 0.7584876543209876,
+        "abstention": 0.0,
+        "hc_error": 0.24151234567901234
+      },
+      "description": {
+        "type": "rules",
+        "source": "fused",
+        "thresholds": {
+          "dominance": 0.7
+        }
+      }
+    },
+    "rules/scheduler": {
+      "macro_f1": 0.8594227245496862,
+      "accuracy": 0.8626543209876543,
+      "abstention": 0.2364969135802469,
+      "hc_error": 0.06442901234567901,
+      "macro_f1_ci": [
+        0.810777200395612,
+        0.8977878789556148
+      ],
+      "forced": {
+        "macro_f1": 0.6461504932527181,
+        "accuracy": 0.7584876543209876,
+        "abstention": 0.0,
+        "hc_error": 0.24151234567901234
+      },
+      "description": {
+        "type": "rules",
+        "source": "scheduler",
+        "thresholds": {
+          "dominance": 0.7
+        }
+      }
+    },
+    "rules/syscall": {
+      "macro_f1": 0.39231233164594037,
+      "accuracy": 0.5229552469135802,
+      "abstention": 0.1863425925925926,
+      "hc_error": 0.3690200617283951,
+      "macro_f1_ci": [
+        0.3241328676853801,
+        0.4578258282727915
+      ],
+      "forced": {
+        "macro_f1": 0.2776925693050417,
+        "accuracy": 0.4702932098765432,
+        "abstention": 0.0,
+        "hc_error": 0.5297067901234568
+      },
+      "description": {
+        "type": "rules",
+        "source": "syscall",
+        "thresholds": {
+          "dominance": 0.8
+        }
+      }
+    },
+    "rules/block": {
+      "macro_f1": 0.37606900440407315,
+      "accuracy": 0.6369598765432098,
+      "abstention": 0.0,
+      "hc_error": 0.3630401234567901,
+      "macro_f1_ci": [
+        0.33533276268005485,
+        0.410570886647599
+      ],
+      "forced": {
+        "macro_f1": 0.37606900440407315,
+        "accuracy": 0.6369598765432098,
+        "abstention": 0.0,
+        "hc_error": 0.3630401234567901
+      },
+      "description": {
+        "type": "rules",
+        "source": "block",
+        "thresholds": {
+          "dominance": 0.6
+        }
+      }
+    },
+    "tree/syscall": {
+      "macro_f1": 0.7691295701271179,
+      "accuracy": 0.7870370370370371,
+      "abstention": 0.20987654320987653,
+      "hc_error": 0.1572145061728395,
+      "macro_f1_ci": [
+        0.6714628877112114,
+        0.8387839624440065
+      ],
+      "forced": {
+        "macro_f1": 0.5682092891914079,
+        "accuracy": 0.6797839506172839,
+        "abstention": 0.0,
+        "hc_error": 0.32021604938271603
+      },
+      "description": {
+        "type": "tree",
+        "source": "syscall",
+        "abstain_below": 0.0,
+        "rules": "if wall_us <= 315.1:\n    -> SYSCALL_CPU_DOMINATED (1.00, n=832)\nelse:\n    if wall_us <= 1.287e+04:\n        if wall_us <= 1058:\n            if syscall_f <= 0.746:\n                -> INDETERMINATE (0.83, n=18)\n            else:\n                -> IO_WAIT_DOMINATED (0.96, n=526)\n        else:\n            if wall_us <= 3166:\n                -> INDETERMINATE (0.76, n=687)\n            else:\n                -> IO_WAIT_DOMINATED (0.77, n=579)\n    else:\n        if wall_us <= 4.668e+04:\n            if syscall_f <= 0.4438:\n                -> SYSCALL_CPU_DOMINATED (0.66, n=410)\n            else:\n                -> IO_WAIT_DOMINATED (1.00, n=41)\n        else:\n            if wall_us <= 2.087e+05:\n                -> SCHEDULER_WAIT_DOMINATED (0.69, n=276)\n            else:\n                -> SCHEDULER_WAIT_DOMINATED (1.00, n=87)\n"
+      }
+    },
+    "tree/block": {
+      "macro_f1": 0.8085008025346707,
+      "accuracy": 0.8364197530864198,
+      "abstention": 0.24074074074074073,
+      "hc_error": 0.08449074074074074,
+      "macro_f1_ci": [
+        0.7236523748921644,
+        0.8738515813758533
+      ],
+      "forced": {
+        "macro_f1": 0.6213251075103935,
+        "accuracy": 0.753858024691358,
+        "abstention": 0.0,
+        "hc_error": 0.24614197530864199
+      },
+      "description": {
+        "type": "tree",
+        "source": "block",
+        "abstain_below": 0.7,
+        "rules": "if bio_kb <= 2:\n    if wall_us <= 1947:\n        -> SYSCALL_CPU_DOMINATED (1.00, n=864)\n    else:\n        if wall_us <= 4.668e+04:\n            if wall_us <= 2683:\n                -> INDETERMINATE (1.00, n=287)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.73, n=506)\n        else:\n            if blk_any <= 7:\n                -> SCHEDULER_WAIT_DOMINATED (0.86, n=304)\n            else:\n                -> INDETERMINATE (0.68, n=59)\nelse:\n    if wall_us <= 799.5:\n        if wall_us <= 647.8:\n            -> IO_WAIT_DOMINATED (1.00, n=391)\n        else:\n            if blk_any <= 1.5:\n                -> IO_WAIT_DOMINATED (0.88, n=26)\n            else:\n                -> IO_WAIT_DOMINATED (1.00, n=45)\n    else:\n        if wall_us <= 3941:\n            if blk_any <= 2.5:\n                -> INDETERMINATE (0.85, n=128)\n            else:\n                -> IO_WAIT_DOMINATED (0.57, n=368)\n        else:\n            if blk_any <= 9:\n                -> INDETERMINATE (0.71, n=7)\n            else:\n                -> IO_WAIT_DOMINATED (0.97, n=471)\n"
+      }
+    },
+    "tree/scheduler": {
+      "macro_f1": 0.9091217588083291,
+      "accuracy": 0.9155092592592593,
+      "abstention": 0.20466820987654322,
+      "hc_error": 0.052662037037037035,
+      "macro_f1_ci": [
+        0.8724001152646524,
+        0.9377341995451304
+      ],
+      "forced": {
+        "macro_f1": 0.6603821962969472,
+        "accuracy": 0.7579089506172839,
+        "abstention": 0.0,
+        "hc_error": 0.24209104938271606
+      },
+      "description": {
+        "type": "tree",
+        "source": "scheduler",
+        "abstain_below": 0.0,
+        "rules": "if run_f <= 0.9999:\n    if blocked_io_f <= 0.5079:\n        if runq_f <= 0.6684:\n            if wall_us <= 1049:\n                -> IO_WAIT_DOMINATED (0.56, n=25)\n            else:\n                -> INDETERMINATE (0.94, n=697)\n        else:\n            if n_switch_out <= 7.5:\n                -> SCHEDULER_WAIT_DOMINATED (0.93, n=305)\n            else:\n                -> INDETERMINATE (0.70, n=10)\n    else:\n        if run_f <= 0.3312:\n            if runq_f <= 0.1508:\n                -> IO_WAIT_DOMINATED (1.00, n=1062)\n            else:\n                -> IO_WAIT_DOMINATED (0.87, n=23)\n        else:\n            if wall_us <= 779:\n                -> IO_WAIT_DOMINATED (0.94, n=33)\n            else:\n                -> INDETERMINATE (0.71, n=24)\nelse:\n    if wall_us <= 1.798e+04:\n        if wall_us <= 1.453e+04:\n            if wall_us <= 2906:\n                -> SYSCALL_CPU_DOMINATED (1.00, n=864)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.99, n=116)\n        else:\n            if wall_us <= 1.556e+04:\n                -> SYSCALL_CPU_DOMINATED (0.78, n=9)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.98, n=55)\n    else:\n        if wall_us <= 1.839e+04:\n            -> INDETERMINATE (0.60, n=10)\n        else:\n            if wall_us <= 2.62e+04:\n                -> SYSCALL_CPU_DOMINATED (0.89, n=88)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.77, n=135)\n"
+      }
+    },
+    "tree/fused": {
+      "macro_f1": 0.9215260861122825,
+      "accuracy": 0.9270833333333334,
+      "abstention": 0.22897376543209877,
+      "hc_error": 0.034722222222222224,
+      "macro_f1_ci": [
+        0.8893231752269287,
+        0.9441734247276872
+      ],
+      "forced": {
+        "macro_f1": 0.6619423985601824,
+        "accuracy": 0.7579089506172839,
+        "abstention": 0.0,
+        "hc_error": 0.24209104938271606
+      },
+      "description": {
+        "type": "tree",
+        "source": "fused",
+        "abstain_below": 0.0,
+        "rules": "if run_f <= 0.9999:\n    if blocked_io_f <= 0.5079:\n        if runq_f <= 0.6684:\n            if wall_us <= 1049:\n                -> IO_WAIT_DOMINATED (0.56, n=25)\n            else:\n                -> INDETERMINATE (0.94, n=697)\n        else:\n            if blk_any <= 38.5:\n                -> SCHEDULER_WAIT_DOMINATED (0.95, n=304)\n            else:\n                -> INDETERMINATE (1.00, n=11)\n    else:\n        if run_f <= 0.3312:\n            if runq_f <= 0.1508:\n                -> IO_WAIT_DOMINATED (1.00, n=1062)\n            else:\n                -> IO_WAIT_DOMINATED (0.87, n=23)\n        else:\n            if syscall_f <= 0.761:\n                -> INDETERMINATE (0.86, n=22)\n            else:\n                -> IO_WAIT_DOMINATED (1.00, n=35)\nelse:\n    if wall_us <= 1.798e+04:\n        if syscall_f <= 0.9931:\n            if wall_us <= 1.453e+04:\n                -> SYSCALL_CPU_DOMINATED (1.00, n=975)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.95, n=64)\n        else:\n            -> SYSCALL_CPU_DOMINATED (0.80, n=5)\n    else:\n        if blk_any <= 30.5:\n            if wall_us <= 3.531e+04:\n                -> INDETERMINATE (0.57, n=61)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.81, n=48)\n        else:\n            if wall_us <= 2.971e+04:\n                -> SYSCALL_CPU_DOMINATED (0.99, n=82)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.95, n=42)\n"
+      }
+    }
+  },
+  "fused_detail": {
+    "rules/fused": {
+      "confusion": {
+        "IO_WAIT_DOMINATED": {
+          "IO_WAIT_DOMINATED": 1374,
+          "SCHEDULER_WAIT_DOMINATED": 3,
+          "SYSCALL_CPU_DOMINATED": 26,
+          "INDETERMINATE": 325
+        },
+        "SCHEDULER_WAIT_DOMINATED": {
+          "IO_WAIT_DOMINATED": 0,
+          "SCHEDULER_WAIT_DOMINATED": 391,
+          "SYSCALL_CPU_DOMINATED": 0,
+          "INDETERMINATE": 41
+        },
+        "SYSCALL_CPU_DOMINATED": {
+          "IO_WAIT_DOMINATED": 0,
+          "SCHEDULER_WAIT_DOMINATED": 0,
+          "SYSCALL_CPU_DOMINATED": 1859,
+          "INDETERMINATE": 13
+        },
+        "INDETERMINATE": {
+          "IO_WAIT_DOMINATED": 23,
+          "SCHEDULER_WAIT_DOMINATED": 25,
+          "SYSCALL_CPU_DOMINATED": 256,
+          "INDETERMINATE": 848
+        }
+      },
+      "per_class": {
+        "IO_WAIT_DOMINATED": {
+          "precision": 0.9835361488904796,
+          "recall": 0.7951388888888888,
+          "f1": 0.87936,
+          "support": 1728
+        },
+        "SCHEDULER_WAIT_DOMINATED": {
+          "precision": 0.9331742243436754,
+          "recall": 0.9050925925925926,
+          "f1": 0.9189189189189189,
+          "support": 432
+        },
+        "SYSCALL_CPU_DOMINATED": {
+          "precision": 0.8682858477347034,
+          "recall": 0.9930555555555556,
+          "f1": 0.926488911039123,
+          "support": 1872
+        },
+        "INDETERMINATE": {
+          "precision": 0.6911165444172779,
+          "recall": 0.7361111111111112,
+          "f1": 0.7129045817570407,
+          "support": 1152
+        }
+      }
+    },
+    "tree/fused": {
+      "confusion": {
+        "IO_WAIT_DOMINATED": {
+          "IO_WAIT_DOMINATED": 1652,
+          "SCHEDULER_WAIT_DOMINATED": 3,
+          "SYSCALL_CPU_DOMINATED": 0,
+          "INDETERMINATE": 73
+        },
+        "SCHEDULER_WAIT_DOMINATED": {
+          "IO_WAIT_DOMINATED": 0,
+          "SCHEDULER_WAIT_DOMINATED": 412,
+          "SYSCALL_CPU_DOMINATED": 0,
+          "INDETERMINATE": 20
+        },
+        "SYSCALL_CPU_DOMINATED": {
+          "IO_WAIT_DOMINATED": 13,
+          "SCHEDULER_WAIT_DOMINATED": 1,
+          "SYSCALL_CPU_DOMINATED": 1753,
+          "INDETERMINATE": 105
+        },
+        "INDETERMINATE": {
+          "IO_WAIT_DOMINATED": 98,
+          "SCHEDULER_WAIT_DOMINATED": 33,
+          "SYSCALL_CPU_DOMINATED": 32,
+          "INDETERMINATE": 989
+        }
+      },
+      "per_class": {
+        "IO_WAIT_DOMINATED": {
+          "precision": 0.9370391378332388,
+          "recall": 0.9560185185185185,
+          "f1": 0.9464336866227443,
+          "support": 1728
+        },
+        "SCHEDULER_WAIT_DOMINATED": {
+          "precision": 0.9175946547884187,
+          "recall": 0.9537037037037037,
+          "f1": 0.9353007945516458,
+          "support": 432
+        },
+        "SYSCALL_CPU_DOMINATED": {
+          "precision": 0.9820728291316526,
+          "recall": 0.9364316239316239,
+          "f1": 0.9587093245829914,
+          "support": 1872
+        },
+        "INDETERMINATE": {
+          "precision": 0.8331929233361416,
+          "recall": 0.8585069444444444,
+          "f1": 0.8456605386917486,
+          "support": 1152
+        }
+      }
+    }
+  },
+  "H1": {
+    "rules: fused - syscall": {
+      "macro_f1_diff": 0.46710577128283026,
+      "ci": [
+        0.38362973107147696,
+        0.5483432225015653
+      ]
+    },
+    "rules: fused - block": {
+      "macro_f1_diff": 0.4833490985246975,
+      "ci": [
+        0.41335275059834986,
+        0.5467947707155559
+      ]
+    },
+    "rules: fused - scheduler": {
+      "macro_f1_diff": -4.62162091552365e-06,
+      "ci": [
+        -5.537493082263811e-05,
+        4.16185988278972e-05
+      ]
+    },
+    "tree: fused - syscall": {
+      "macro_f1_diff": 0.15239651598516457,
+      "ci": [
+        0.08868859805674378,
+        0.22908734706195633
+      ]
+    },
+    "tree: fused - block": {
+      "macro_f1_diff": 0.11302528357761177,
+      "ci": [
+        0.051179960286029336,
+        0.1870824570913011
+      ]
+    },
+    "tree: fused - scheduler": {
+      "macro_f1_diff": 0.012404327303953355,
+      "ci": [
+        -0.004694535858130511,
+        0.03065432361713849
+      ]
+    }
+  },
+  "H2": {
+    "rules": {
+      "hc_error_abstain": 0.0642361111111111,
+      "hc_error_forced": 0.24151234567901234,
+      "abstention": 0.23668981481481483,
+      "diff_ci": [
+        0.11959876543209876,
+        0.24749228395061726
+      ]
+    },
+    "tree": {
+      "hc_error_abstain": 0.034722222222222224,
+      "hc_error_forced": 0.24209104938271606,
+      "abstention": 0.22897376543209877,
+      "diff_ci": [
+        0.14467592592592593,
+        0.2841435185185185
+      ]
+    }
+  },
+  "ablations": {
+    "no block events": {
+      "features": [
+        "wall_us",
+        "run_f",
+        "runq_f",
+        "wake_f",
+        "blocked_io_f",
+        "blocked_other_f",
+        "n_switch_out",
+        "syscall_f",
+        "n_syscalls",
+        "n_faults"
+      ],
+      "macro_f1": 0.9156151445710075,
+      "ci": [
+        0.8821137113796476,
+        0.9424091505545619
+      ]
+    },
+    "no scheduler events": {
+      "features": [
+        "wall_us",
+        "syscall_f",
+        "n_syscalls",
+        "bio_kb",
+        "blk_any",
+        "n_faults"
+      ],
+      "macro_f1": 0.8776090128095617,
+      "ci": [
+        0.7961911946103921,
+        0.9360143798043925
+      ]
+    },
+    "no syscall events": {
+      "features": [
+        "wall_us",
+        "run_f",
+        "runq_f",
+        "wake_f",
+        "blocked_io_f",
+        "blocked_other_f",
+        "n_switch_out",
+        "bio_kb",
+        "blk_any",
+        "n_faults"
+      ],
+      "macro_f1": 0.9152349948628968,
+      "ci": [
+        0.8810315801178804,
+        0.9391039035358897
+      ]
+    }
+  },
+  "transfer": {
+    "rules/fused": {
+      "macro_f1": 0.9814323607427056,
+      "accuracy": 0.9635416666666666,
+      "abstention": 0.034722222222222224,
+      "hc_error": 0.001736111111111111,
+      "macro_f1_ci": [
+        0.9658886894075405,
+        0.9921259842519685
+      ],
+      "forced": {
+        "macro_f1": 0.9982608695652174,
+        "accuracy": 0.9965277777777778,
+        "abstention": 0.0,
+        "hc_error": 0.003472222222222222
+      },
+      "description": {
+        "type": "rules",
+        "source": "fused",
+        "thresholds": {
+          "dominance": 0.7
+        }
+      }
+    },
+    "rules/scheduler": {
+      "macro_f1": 0.9814323607427056,
+      "accuracy": 0.9635416666666666,
+      "abstention": 0.034722222222222224,
+      "hc_error": 0.001736111111111111,
+      "macro_f1_ci": [
+        0.9658886894075405,
+        0.9921259842519685
+      ],
+      "forced": {
+        "macro_f1": 0.9982608695652174,
+        "accuracy": 0.9965277777777778,
+        "abstention": 0.0,
+        "hc_error": 0.003472222222222222
+      },
+      "description": {
+        "type": "rules",
+        "source": "scheduler",
+        "thresholds": {
+          "dominance": 0.7
+        }
+      }
+    },
+    "rules/syscall": {
+      "macro_f1": 0.8554396423248882,
+      "accuracy": 0.7473958333333334,
+      "abstention": 0.0026041666666666665,
+      "hc_error": 0.25,
+      "macro_f1_ci": [
+        0.7027027027027027,
+        0.9546279491833031
+      ],
+      "forced": {
+        "macro_f1": 0.8571428571428571,
+        "accuracy": 0.75,
+        "abstention": 0.0,
+        "hc_error": 0.25
+      },
+      "description": {
+        "type": "rules",
+        "source": "syscall",
+        "thresholds": {
+          "dominance": 0.8
+        }
+      }
+    },
+    "rules/block": {
+      "macro_f1": 1.0,
+      "accuracy": 1.0,
+      "abstention": 0.0,
+      "hc_error": 0.0,
+      "macro_f1_ci": [
+        1.0,
+        1.0
+      ],
+      "forced": {
+        "macro_f1": 1.0,
+        "accuracy": 1.0,
+        "abstention": 0.0,
+        "hc_error": 0.0
+      },
+      "description": {
+        "type": "rules",
+        "source": "block",
+        "thresholds": {
+          "dominance": 0.6
+        }
+      }
+    },
+    "tree/syscall": {
+      "macro_f1": 0.7464635473340588,
+      "accuracy": 0.5954861111111112,
+      "abstention": 0.3940972222222222,
+      "hc_error": 0.010416666666666666,
+      "macro_f1_ci": [
+        0.5777777777777777,
+        0.8777398928397467
+      ],
+      "forced": {
+        "macro_f1": 0.9943256219991271,
+        "accuracy": 0.9887152777777778,
+        "abstention": 0.0,
+        "hc_error": 0.011284722222222222
+      },
+      "description": {
+        "type": "tree",
+        "source": "syscall",
+        "abstain_below": 0.0,
+        "rules": "if wall_us <= 315.1:\n    -> SYSCALL_CPU_DOMINATED (1.00, n=832)\nelse:\n    if wall_us <= 1.287e+04:\n        if wall_us <= 1058:\n            if syscall_f <= 0.746:\n                -> INDETERMINATE (0.83, n=18)\n            else:\n                -> IO_WAIT_DOMINATED (0.96, n=526)\n        else:\n            if wall_us <= 3166:\n                -> INDETERMINATE (0.76, n=687)\n            else:\n                -> IO_WAIT_DOMINATED (0.77, n=579)\n    else:\n        if wall_us <= 4.668e+04:\n            if syscall_f <= 0.4438:\n                -> SYSCALL_CPU_DOMINATED (0.66, n=410)\n            else:\n                -> IO_WAIT_DOMINATED (1.00, n=41)\n        else:\n            if wall_us <= 2.087e+05:\n                -> SCHEDULER_WAIT_DOMINATED (0.69, n=276)\n            else:\n                -> SCHEDULER_WAIT_DOMINATED (1.00, n=87)\n"
+      }
+    },
+    "tree/block": {
+      "macro_f1": 0.7333699835074217,
+      "accuracy": 0.5789930555555556,
+      "abstention": 0.4192708333333333,
+      "hc_error": 0.001736111111111111,
+      "macro_f1_ci": [
+        0.5680546923555003,
+        0.8639053254437871
+      ],
+      "forced": {
+        "macro_f1": 0.998696219035202,
+        "accuracy": 0.9973958333333334,
+        "abstention": 0.0,
+        "hc_error": 0.0026041666666666665
+      },
+      "description": {
+        "type": "tree",
+        "source": "block",
+        "abstain_below": 0.7,
+        "rules": "if bio_kb <= 2:\n    if wall_us <= 1947:\n        -> SYSCALL_CPU_DOMINATED (1.00, n=864)\n    else:\n        if wall_us <= 4.668e+04:\n            if wall_us <= 2683:\n                -> INDETERMINATE (1.00, n=287)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.73, n=506)\n        else:\n            if blk_any <= 7:\n                -> SCHEDULER_WAIT_DOMINATED (0.86, n=304)\n            else:\n                -> INDETERMINATE (0.68, n=59)\nelse:\n    if wall_us <= 799.5:\n        if wall_us <= 647.8:\n            -> IO_WAIT_DOMINATED (1.00, n=391)\n        else:\n            if blk_any <= 1.5:\n                -> IO_WAIT_DOMINATED (0.88, n=26)\n            else:\n                -> IO_WAIT_DOMINATED (1.00, n=45)\n    else:\n        if wall_us <= 3941:\n            if blk_any <= 2.5:\n                -> INDETERMINATE (0.85, n=128)\n            else:\n                -> IO_WAIT_DOMINATED (0.57, n=368)\n        else:\n            if blk_any <= 9:\n                -> INDETERMINATE (0.71, n=7)\n            else:\n                -> IO_WAIT_DOMINATED (0.97, n=471)\n"
+      }
+    },
+    "tree/scheduler": {
+      "macro_f1": 0.998696219035202,
+      "accuracy": 0.9973958333333334,
+      "abstention": 0.0026041666666666665,
+      "hc_error": 0.0,
+      "macro_f1_ci": [
+        0.996078431372549,
+        1.0
+      ],
+      "forced": {
+        "macro_f1": 0.9995657837603126,
+        "accuracy": 0.9991319444444444,
+        "abstention": 0.0,
+        "hc_error": 0.0008680555555555555
+      },
+      "description": {
+        "type": "tree",
+        "source": "scheduler",
+        "abstain_below": 0.0,
+        "rules": "if run_f <= 0.9999:\n    if blocked_io_f <= 0.5079:\n        if runq_f <= 0.6684:\n            if wall_us <= 1049:\n                -> IO_WAIT_DOMINATED (0.56, n=25)\n            else:\n                -> INDETERMINATE (0.94, n=697)\n        else:\n            if n_switch_out <= 7.5:\n                -> SCHEDULER_WAIT_DOMINATED (0.93, n=305)\n            else:\n                -> INDETERMINATE (0.70, n=10)\n    else:\n        if run_f <= 0.3312:\n            if runq_f <= 0.1508:\n                -> IO_WAIT_DOMINATED (1.00, n=1062)\n            else:\n                -> IO_WAIT_DOMINATED (0.87, n=23)\n        else:\n            if wall_us <= 779:\n                -> IO_WAIT_DOMINATED (0.94, n=33)\n            else:\n                -> INDETERMINATE (0.71, n=24)\nelse:\n    if wall_us <= 1.798e+04:\n        if wall_us <= 1.453e+04:\n            if wall_us <= 2906:\n                -> SYSCALL_CPU_DOMINATED (1.00, n=864)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.99, n=116)\n        else:\n            if wall_us <= 1.556e+04:\n                -> SYSCALL_CPU_DOMINATED (0.78, n=9)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.98, n=55)\n    else:\n        if wall_us <= 1.839e+04:\n            -> INDETERMINATE (0.60, n=10)\n        else:\n            if wall_us <= 2.62e+04:\n                -> SYSCALL_CPU_DOMINATED (0.89, n=88)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.77, n=135)\n"
+      }
+    },
+    "tree/fused": {
+      "macro_f1": 0.999131190269331,
+      "accuracy": 0.9982638888888888,
+      "abstention": 0.001736111111111111,
+      "hc_error": 0.0,
+      "macro_f1_ci": [
+        0.9973890339425587,
+        1.0
+      ],
+      "forced": {
+        "macro_f1": 0.9995657837603126,
+        "accuracy": 0.9991319444444444,
+        "abstention": 0.0,
+        "hc_error": 0.0008680555555555555
+      },
+      "description": {
+        "type": "tree",
+        "source": "fused",
+        "abstain_below": 0.0,
+        "rules": "if run_f <= 0.9999:\n    if blocked_io_f <= 0.5079:\n        if runq_f <= 0.6684:\n            if wall_us <= 1049:\n                -> IO_WAIT_DOMINATED (0.56, n=25)\n            else:\n                -> INDETERMINATE (0.94, n=697)\n        else:\n            if blk_any <= 38.5:\n                -> SCHEDULER_WAIT_DOMINATED (0.95, n=304)\n            else:\n                -> INDETERMINATE (1.00, n=11)\n    else:\n        if run_f <= 0.3312:\n            if runq_f <= 0.1508:\n                -> IO_WAIT_DOMINATED (1.00, n=1062)\n            else:\n                -> IO_WAIT_DOMINATED (0.87, n=23)\n        else:\n            if syscall_f <= 0.761:\n                -> INDETERMINATE (0.86, n=22)\n            else:\n                -> IO_WAIT_DOMINATED (1.00, n=35)\nelse:\n    if wall_us <= 1.798e+04:\n        if syscall_f <= 0.9931:\n            if wall_us <= 1.453e+04:\n                -> SYSCALL_CPU_DOMINATED (1.00, n=975)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.95, n=64)\n        else:\n            -> SYSCALL_CPU_DOMINATED (0.80, n=5)\n    else:\n        if blk_any <= 30.5:\n            if wall_us <= 3.531e+04:\n                -> INDETERMINATE (0.57, n=61)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.81, n=48)\n        else:\n            if wall_us <= 2.971e+04:\n                -> SYSCALL_CPU_DOMINATED (0.99, n=82)\n            else:\n                -> SYSCALL_CPU_DOMINATED (0.95, n=42)\n"
+      }
+    }
+  }
+}

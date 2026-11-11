@@ -1,0 +1,19 @@
+{
+  "_comment": "Frozen before final evaluation. Repetitions 1-2 tune thresholds and train trees; 3-5 are test only.",
+  "dev_reps": [1, 2],
+  "test_reps": [3, 4, 5],
+  "dominance": 0.6,
+  "bootstrap": 1000,
+  "seed": 20261111,
+  "tree": {
+    "max_depth": 4,
+    "min_leaf": 5,
+    "abstain_grid": [0.0, 0.5, 0.6, 0.7, 0.8, 0.9]
+  },
+  "transfer": {
+    "_comment": "I/O workloads trained at 64 KiB sequential, tested at 16 KiB random. Non-I/O workloads have no size, so they stay in training.",
+    "train_filter": {"io_size": 65536, "pattern": "sequential"},
+    "test_filter": {"io_size": 16384, "pattern": "random"},
+    "always_include": ["cpu", "cpu_contended", "sleep", "neighbor_io"]
+  }
+}

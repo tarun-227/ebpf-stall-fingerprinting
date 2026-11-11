@@ -1,0 +1,43 @@
+if run_f <= 0.9999:
+    if blocked_io_f <= 0.5079:
+        if runq_f <= 0.6684:
+            if wall_us <= 1049:
+                -> IO_WAIT_DOMINATED (0.56, n=25)
+            else:
+                -> INDETERMINATE (0.94, n=697)
+        else:
+            if blk_any <= 38.5:
+                -> SCHEDULER_WAIT_DOMINATED (0.95, n=304)
+            else:
+                -> INDETERMINATE (1.00, n=11)
+    else:
+        if run_f <= 0.3312:
+            if runq_f <= 0.1508:
+                -> IO_WAIT_DOMINATED (1.00, n=1062)
+            else:
+                -> IO_WAIT_DOMINATED (0.87, n=23)
+        else:
+            if syscall_f <= 0.761:
+                -> INDETERMINATE (0.86, n=22)
+            else:
+                -> IO_WAIT_DOMINATED (1.00, n=35)
+else:
+    if wall_us <= 1.798e+04:
+        if syscall_f <= 0.9931:
+            if wall_us <= 1.453e+04:
+                -> SYSCALL_CPU_DOMINATED (1.00, n=975)
+            else:
+                -> SYSCALL_CPU_DOMINATED (0.95, n=64)
+        else:
+            -> SYSCALL_CPU_DOMINATED (0.80, n=5)
+    else:
+        if blk_any <= 30.5:
+            if wall_us <= 3.531e+04:
+                -> INDETERMINATE (0.57, n=61)
+            else:
+                -> SYSCALL_CPU_DOMINATED (0.81, n=48)
+        else:
+            if wall_us <= 2.971e+04:
+                -> SYSCALL_CPU_DOMINATED (0.99, n=82)
+            else:
+                -> SYSCALL_CPU_DOMINATED (0.95, n=42)

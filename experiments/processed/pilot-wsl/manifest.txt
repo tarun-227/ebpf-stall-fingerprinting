@@ -1,0 +1,12 @@
+matrix_id: pilot-wsl
+date: 2026-11-12T02:46:41Z
+kernel: 6.6.87.2-microsoft-standard-WSL2 (x86_64)
+distro: Ubuntu 24.04.3 LTS
+cpu: Intel(R) Core(TM) i7-1065G7 CPU @ 1.30GHz x 8
+ram: 7.7Gi
+virtualisation: wsl
+data_dir: /home/user/stalltest/matrix (/dev/sdd ext4)
+reps: 1 2 3 4 5; threads: 1 4 16; transfer_reps: 3 4 5
+ops_total: 48; cpu_ms: 10; sleep_us: 2000; hog_cpu: 1; devs: all
+stallbench_sha256: ad1541068ab7eea74defa46c7d7cafa53460b291c25eb09b8236affd8e2c64ab
+stalltrace_sha256: 02263e368285281649b63125a47f1c1366babe9dbed44eeb1eeefed41f3c0e43

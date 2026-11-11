@@ -1,0 +1,9 @@
+build/
+.venv/
+__pycache__/
+*.pyc
+# Large or machine-specific outputs; the curated runs for the report are added explicitly.
+experiments/raw/scratch/
+*.bin
+# Reference papers and course handouts stay local (not ours to redistribute).
+/*.pdf

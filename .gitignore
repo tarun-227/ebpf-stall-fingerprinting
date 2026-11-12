@@ -7,3 +7,12 @@ experiments/raw/scratch/
 *.bin
 # Reference papers and course handouts stay local (not ours to redistribute).
 /*.pdf
+# LaTeX build output
+report/*.aux
+report/*.log
+report/*.out
+report/*.bbl
+report/*.blg
+report/*.fls
+report/*.fdb_latexmk
+report/main.pdf

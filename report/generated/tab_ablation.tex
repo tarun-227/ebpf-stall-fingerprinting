@@ -1,0 +1,13 @@
+Full fused tree (markers) & 0.986 & [0.973, 0.994] \\
+No block events & 0.986 & [0.973, 0.994] \\
+No syscall events & 0.986 & [0.973, 0.994] \\
+No scheduler events & 0.884 & [0.836, 0.923] \\
+No \texttt{in\_iowait} flag & 0.974 & [0.958, 0.986] \\
+\midrule
+PID-only, 5\,ms windows & 0.809 & [0.755, 0.861] \\
+PID-only, 20\,ms windows & 0.898 & [0.851, 0.941] \\
+PID-only, 100\,ms windows & 0.889 & [0.729, 0.929] \\
+\midrule
+Clean runs only (88\% of ops) & 0.984 & -- \\
+Drop ops within 5\,pp of the 60\% rule & 0.988 & -- \\
+Transfer 64K seq $\to$ 16K rand (no iowait, acc.) & 0.976 & -- \\

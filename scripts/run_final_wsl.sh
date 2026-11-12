@@ -10,6 +10,8 @@
 #
 # Raw results go to BASE_DIR/raw/{final-wsl,delay-sweep-wsl,overhead-wsl}; the
 # full log to BASE_DIR/final-run.log. Override MAIN_DELAY_MS [2], IMG_MB [2048].
+# STEPS ["check matrix sweep overhead"] picks steps after the always-run setup;
+# "smoke" adds the smoke test. OVERHEAD_ID [overhead-wsl] names the overhead run.
 set -euo pipefail
 
 [[ $EUID -eq 0 ]] || { echo "run as root: sudo $0 [BASE_DIR]" >&2; exit 1; }
@@ -21,6 +23,9 @@ MNT="$BASE/mnt"
 export RAW_DIR="$BASE/raw"
 LOG="$BASE/final-run.log"
 DM="$ROOT/scripts/dm_delay.sh"
+STEPS=" ${STEPS:-check matrix sweep overhead} "
+OVERHEAD_ID="${OVERHEAD_ID:-overhead-wsl}"
+want() { [[ "$STEPS" == *" $1 "* ]]; }
 mkdir -p "$BASE" "$RAW_DIR"
 exec > >(tee -a "$LOG") 2>&1
 echo "=== final WSL runs started $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -50,24 +55,38 @@ check() {
   python3 -c "import json,statistics as s; L=[json.loads(x) for x in open('$BASE/check-$1.jsonl')][1:]; \
 print(f'  delay $1 ms: median direct-read latency {s.median(o[\"lat_ns\"] for o in L)/1e6:.2f} ms')"
 }
-echo "=== delay check"
-check 0
-check 10
-rm -f "$DATA/check.bin"
+if want check; then
+  echo "=== delay check"
+  check 0
+  check 10
+  rm -f "$DATA/check.bin"
+fi
+
+if want smoke; then
+  echo "=== smoke test"
+  "$DM" set 0
+  "$ROOT/scripts/smoke_test.sh" "$BASE/smoke"
+fi
 
 # 3. final matrix
-echo "=== final matrix (delay ${MAIN_DELAY_MS} ms)"
-"$DM" set "$MAIN_DELAY_MS"
-DELAY_MS="$MAIN_DELAY_MS" "$ROOT/scripts/run_matrix.sh" "$DATA" final-wsl
+if want matrix; then
+  echo "=== final matrix (delay ${MAIN_DELAY_MS} ms)"
+  "$DM" set "$MAIN_DELAY_MS"
+  DELAY_MS="$MAIN_DELAY_MS" "$ROOT/scripts/run_matrix.sh" "$DATA" final-wsl
+fi
 
 # 4. delay sweep
-echo "=== delay sweep"
-"$ROOT/scripts/run_delay_sweep.sh" "$DATA" delay-sweep-wsl
+if want sweep; then
+  echo "=== delay sweep"
+  "$ROOT/scripts/run_delay_sweep.sh" "$DATA" delay-sweep-wsl
+fi
 
 # 5. overhead (no injected delay)
-echo "=== overhead"
-"$DM" set 0
-"$ROOT/scripts/run_overhead.sh" "$DATA" overhead-wsl
+if want overhead; then
+  echo "=== overhead ($OVERHEAD_ID)"
+  "$DM" set 0
+  "$ROOT/scripts/run_overhead.sh" "$DATA" "$OVERHEAD_ID"
+fi
 
 [[ -n "${SUDO_USER:-}" ]] && chown -R "$SUDO_USER": "$RAW_DIR" "$LOG"
 echo "=== all done in $(( ($(date +%s) - t0) / 60 )) min; results under $RAW_DIR"

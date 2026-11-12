@@ -153,6 +153,29 @@ class BreakdownTest(unittest.TestCase):
         self.assertEqual(rows[1]["blocked_io"], 2500)
         self.assertTrue(all(r["gt_op_id"] == 1 for r in rows))
 
+    def test_binary_event_file_decodes_like_json(self):
+        import os
+        import struct
+        import tempfile
+        rec = struct.Struct("<QIIIHHQQII")
+        head = b"STEVENT\0" + struct.pack("<II", 1, rec.size)
+        body = (rec.pack(1000, 7, TID, 2, 3, (1 << 1) | (1 << 2) | (1 << 9), 2, OTHER, 7, 0)
+                + rec.pack(2000, 7, TID, 2, 2, 0, 17, (1 << 64) - 5, 0, 0)
+                + rec.pack(3000, 0, 0, 1, 8, (1 << 3) | (1 << 5), 4096, 65536, (8 << 20) | 16,
+                           (1 << 32) - 5))
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "events.bin"), "wb") as f:
+                f.write(head + body)
+            evs = bd.load_events(d)
+        sw_ev, exit_ev, blk = evs
+        self.assertEqual((sw_ev["type"], sw_ev["tid"], sw_ev["next_tid"], sw_ev["prev_state"]),
+                         ("sched_switch", TID, OTHER, 2))
+        self.assertEqual((sw_ev["iowait"], sw_ev["iowait_known"], sw_ev["prev_idle"],
+                          sw_ev["preempt"]), (1, 1, 1, 0))
+        self.assertEqual((exit_ev["nr"], exit_ev["ret"]), (17, -5))
+        self.assertEqual((blk["dev"], blk["bytes"], blk["rw"], blk["error"]),
+                         ("8:16", 65536, "RS", -5))
+
     def test_other_threads_are_ignored(self):
         r = self.one([
             ev(1000, "op_begin", op_id=1),

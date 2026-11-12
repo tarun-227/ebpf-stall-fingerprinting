@@ -5,7 +5,7 @@
 #
 # DATA_DIR must be on the test filesystem (local, supports O_DIRECT; on the VM
 # this is the dm-delay mount). Results go to
-#   experiments/raw/MATRIX_ID/<run_id>/{events.jsonl,stats.json,gt.jsonl,meta.json}
+#   experiments/raw/MATRIX_ID/<run_id>/{events.bin,stats.json,gt.jsonl,meta.json}
 # and are never overwritten.
 #
 # Environment overrides (defaults in brackets):
@@ -83,7 +83,7 @@ run() {  # run RUN_ID REP WORKLOAD THREADS IO_SIZE PATTERN
   local seed=$(( rep * 100000 + n ))
   local extra=()
   [[ "$pat" == random ]] && extra+=(--random)
-  if [[ -e "$dir/events.jsonl" ]]; then echo "skip $id (exists)"; return; fi
+  if [[ -e "$dir/events.bin" || -e "$dir/events.jsonl" ]]; then echo "skip $id (exists)"; return; fi
   mkdir -p "$dir"
   printf '{"run_id":"%s","rep":%d,"workload":"%s","threads":%d,"io_size":%d,"pattern":"%s","seed":%d,"delay_ms":"%s"}\n' \
     "$id" "$rep" "$wl" "$thr" "$io" "$pat" "$seed" "$DELAY_MS" > "$dir/meta.json"

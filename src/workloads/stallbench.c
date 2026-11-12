@@ -108,6 +108,7 @@ struct config {
 	long gap_us;
 	long settle_ms;
 	bool prepare;
+	bool no_ref;
 };
 
 static struct config cfg = {
@@ -596,6 +597,7 @@ struct worker {
 	int nrecs;
 	int setup_err;
 	uint64_t sink;
+	uint64_t cpu_ns;	/* thread CPU time over all operations */
 };
 
 static pthread_barrier_t start_barrier;
@@ -758,31 +760,42 @@ wait:
 	if (w->setup_err)
 		goto out;
 
-	for (int i = 0; i < cfg.ops; i++) {
-		struct rec *r = &w->recs[i];
-		off_t off = needs_file(cfg.wl) ? next_offset(w, &rng, i) : 0;
-		struct ref_sample s0, s1;
+	{
+		struct timespec c0, c1;
 
-		r->op_id = ((uint64_t)w->idx << 32) | (uint32_t)i;
-		before_op(fd, off);
+		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c0);
+		for (int i = 0; i < cfg.ops; i++) {
+			struct rec *r = &w->recs[i];
+			off_t off = needs_file(cfg.wl) ? next_offset(w, &rng, i) : 0;
+			struct ref_sample s0 = { 0, 0, -1 }, s1 = { 0, 0, -1 };
 
-		read_ref(ss_fd, &s0);
-		op_begin(r->op_id);
-		r->t_begin = now_ns();
-		r->bytes = do_op(w, fd, buf, off);
-		r->t_end = now_ns();
-		op_end(r->op_id);
-		read_ref(ss_fd, &s1);
+			r->op_id = ((uint64_t)w->idx << 32) | (uint32_t)i;
+			before_op(fd, off);
 
-		r->err = r->bytes < 0 ? (int)-r->bytes : 0;
-		r->ref_t0 = s0.wall;
-		r->ref_t1 = s1.wall;
-		r->ref_wall_ns = (int64_t)(s1.wall - s0.wall);
-		r->ref_cpu_ns = (int64_t)(s1.cpu - s0.cpu);
-		r->ref_runq_ns = (s0.runq >= 0 && s1.runq >= 0) ? s1.runq - s0.runq : -1;
-		w->nrecs = i + 1;
-		if (cfg.gap_us > 0)
-			usleep((useconds_t)cfg.gap_us);
+			/* --no-ref skips the per-op reference readings (about ten extra
+			 * syscalls per op), so overhead runs measure only the tracer. */
+			if (!cfg.no_ref)
+				read_ref(ss_fd, &s0);
+			op_begin(r->op_id);
+			r->t_begin = now_ns();
+			r->bytes = do_op(w, fd, buf, off);
+			r->t_end = now_ns();
+			op_end(r->op_id);
+			if (!cfg.no_ref)
+				read_ref(ss_fd, &s1);
+
+			r->err = r->bytes < 0 ? (int)-r->bytes : 0;
+			r->ref_t0 = s0.wall;
+			r->ref_t1 = s1.wall;
+			r->ref_wall_ns = (int64_t)(s1.wall - s0.wall);
+			r->ref_cpu_ns = (int64_t)(s1.cpu - s0.cpu);
+			r->ref_runq_ns = (s0.runq >= 0 && s1.runq >= 0) ? s1.runq - s0.runq : -1;
+			w->nrecs = i + 1;
+			if (cfg.gap_us > 0)
+				usleep((useconds_t)cfg.gap_us);
+		}
+		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &c1);
+		w->cpu_ns = (uint64_t)((c1.tv_sec - c0.tv_sec) * 1000000000LL + (c1.tv_nsec - c0.tv_nsec));
 	}
 out:
 	if (fd >= 0)
@@ -800,11 +813,13 @@ static void write_results(struct worker *ws, uint64_t t_start, uint64_t t_end)
 	FILE *f = fopen(cfg.out, "w");
 	const char *label = expected_label();
 	long total_ops = 0, failed = 0;
+	uint64_t worker_cpu = 0;
 
 	if (!f)
 		die("open %s: %s", cfg.out, strerror(errno));
 	for (int t = 0; t < cfg.threads; t++) {
 		total_ops += ws[t].nrecs;
+		worker_cpu += ws[t].cpu_ns;
 		for (int i = 0; i < ws[t].nrecs; i++)
 			failed += ws[t].recs[i].err != 0;
 	}
@@ -819,6 +834,7 @@ static void write_results(struct worker *ws, uint64_t t_start, uint64_t t_end)
 		"\"iters_per_ms\":%" PRIu64 ",\"cpu_iters\":%" PRIu64 ",\"clock_ratio\":%.5f,"
 		"\"clock_ratio_end\":%.5f,\"clock_drift_flag\":%s,"
 		"\"t_start_ns\":%" PRIu64 ",\"t_end_ns\":%" PRIu64 ","
+		"\"no_ref\":%s,\"worker_cpu_ns\":%" PRIu64 ","
 		"\"ops_total\":%ld,\"ops_failed\":%ld}\n",
 		SCHEMA_VERSION, cfg.run_id, (int)getpid(), wl_names[cfg.wl], label,
 		needs_file(cfg.wl) ? cfg.file : "", needs_file(cfg.wl) ? cfg.file_size : 0,
@@ -827,7 +843,7 @@ static void write_results(struct worker *ws, uint64_t t_start, uint64_t t_end)
 		cfg.wl == WL_SLEEP ? cfg.sleep_us : 0, cfg.cpu_ms, cfg.gap_us,
 		usable_cpus, neighbor_cpu, iters_per_ms, cpu_iters, clock_ratio, clock_ratio_end,
 		fabs(clock_ratio_end - clock_ratio) > 0.01 * clock_ratio ? "true" : "false",
-		t_start, t_end,
+		t_start, t_end, cfg.no_ref ? "true" : "false", worker_cpu,
 		total_ops, failed);
 
 	for (int t = 0; t < cfg.threads; t++) {
@@ -897,7 +913,9 @@ static void usage(FILE *f)
 "  --sleep-us N      sleep length for sleep (default 2000)\n"
 "  --cpu-ms X        busy-loop length for cpu workloads (default 2.0)\n"
 "  --gap-us N        pause between operations (default 0)\n"
-"  --settle-ms N     wait after starting helpers (default 200)\n");
+"  --settle-ms N     wait after starting helpers (default 200)\n"
+"  --no-ref          skip per-op kernel-accounting readings (for overhead runs;\n"
+"                    reference labels become UNKNOWN)\n");
 }
 
 static uint64_t parse_u64(const char *s, const char *name)
@@ -916,7 +934,7 @@ static void parse_args(int argc, char **argv)
 {
 	enum { O_PREPARE = 256, O_WORKLOAD, O_FILE, O_OUT, O_RUN_ID, O_SEED, O_THREADS,
 	       O_OPS, O_IO_SIZE, O_SIZE, O_RANDOM, O_HOGS, O_HOG_CPU, O_SLEEP_US,
-	       O_CPU_MS, O_GAP_US, O_SETTLE_MS, O_HELP };
+	       O_CPU_MS, O_GAP_US, O_SETTLE_MS, O_NO_REF, O_HELP };
 	static const struct option longopts[] = {
 		{ "prepare", no_argument, NULL, O_PREPARE },
 		{ "workload", required_argument, NULL, O_WORKLOAD },
@@ -935,6 +953,7 @@ static void parse_args(int argc, char **argv)
 		{ "cpu-ms", required_argument, NULL, O_CPU_MS },
 		{ "gap-us", required_argument, NULL, O_GAP_US },
 		{ "settle-ms", required_argument, NULL, O_SETTLE_MS },
+		{ "no-ref", no_argument, NULL, O_NO_REF },
 		{ "help", no_argument, NULL, O_HELP },
 		{ 0 },
 	};
@@ -965,6 +984,7 @@ static void parse_args(int argc, char **argv)
 		case O_CPU_MS: cfg.cpu_ms = strtod(optarg, NULL); break;
 		case O_GAP_US: cfg.gap_us = (long)parse_u64(optarg, "--gap-us"); break;
 		case O_SETTLE_MS: cfg.settle_ms = (long)parse_u64(optarg, "--settle-ms"); break;
+		case O_NO_REF: cfg.no_ref = true; break;
 		case O_HELP: usage(stdout); exit(0);
 		default: usage(stderr); exit(2);
 		}

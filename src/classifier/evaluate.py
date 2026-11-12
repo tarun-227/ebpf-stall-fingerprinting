@@ -282,6 +282,29 @@ def main():
                 print(f"  {k:<26} macro-F1 {v['macro_f1']:.3f}  accuracy {v['accuracy']:.3f}"
                       f"  hc-error {v['hc_error']:.3f}")
 
+    # Sensitivity: drop whole runs that lost events (missing events can corrupt
+    # a timeline) or whose kernel clock drifted by more than 1% during the run
+    # (reference shares were scaled with the start-of-run ratio).
+    clean = [i for i, r in enumerate(test)
+             if float(r.get("run_drop_rate", 0) or 0) == 0
+             and str(r.get("clock_drift", "0")) in ("0", "0.0", "", "False")]
+    if len(clean) < len(test):
+        ct = [truth[i] for i in clean]
+        sens = {"kept_fraction": len(clean) / len(test),
+                "kept_runs": len({test[i]["run_id"] for i in clean})}
+        for name in ("rules/fused", "tree/fused", "rules/fused_noiowait", "tree/fused_noiowait",
+                     "tree/scheduler", "tree/syscall", "tree/block"):
+            cp = [preds[name][i] for i in clean]
+            sens[name] = {"macro_f1": macro_f1(ct, cp), "accuracy": accuracy(ct, cp),
+                          "hc_error": hc_error(ct, cp)}
+        results["sensitivity_clean_runs"] = sens
+        print(f"\nSensitivity: only runs with no dropped events and no clock drift "
+              f"(keeps {sens['kept_fraction']:.1%} of operations, {sens['kept_runs']} runs)")
+        for k, v in sens.items():
+            if isinstance(v, dict):
+                print(f"  {k:<26} macro-F1 {v['macro_f1']:.3f}  accuracy {v['accuracy']:.3f}"
+                      f"  hc-error {v['hc_error']:.3f}")
+
     # Feature ablations (tree, so the model can re-weight what is left).
     abl = {}
     full = m.FEATURE_SETS["fused"]

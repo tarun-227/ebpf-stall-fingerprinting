@@ -32,10 +32,18 @@ def run_metrics(d):
     # scale): what the tracer adds to the workload itself, and much less
     # sensitive to frequency scaling than wall-clock throughput.
     cpu = sorted(o["ref_cpu_ns"] for o in ops if o.get("ref_runq_ns", -1) >= 0)
+    if cpu:
+        cpu_per_op = cpu[len(cpu) // 2] / 1e3
+    elif head.get("worker_cpu_ns") and ops:
+        # --no-ref runs: workers' total CPU time over all operations, on the
+        # wall-clock scale (the kernel clock can run fast or slow in a VM).
+        cpu_per_op = head["worker_cpu_ns"] / head.get("clock_ratio", 1.0) / len(ops) / 1e3
+    else:
+        cpu_per_op = None
     m = {"meta": meta, "throughput": len(ops) / secs if secs > 0 else 0.0,
          "p50_us": lat[len(lat) // 2] / 1e3 if lat else 0.0,
          "p99_us": lat[int(0.99 * (len(lat) - 1))] / 1e3 if lat else 0.0,
-         "cpu_per_op_us": cpu[len(cpu) // 2] / 1e3 if cpu else None,
+         "cpu_per_op_us": cpu_per_op,
          "collector_cpu": None, "drop_rate": None}
     stats = os.path.join(d, "stats.json")
     if os.path.exists(stats):

@@ -27,13 +27,16 @@ any process.
 
 Standard library only, so it also runs outside the project venv.
 
-  breakdown.py EVENTS.jsonl GT.jsonl [--csv OUT.csv] [--summary]
+  breakdown.py EVENTS GT.jsonl [--csv OUT.csv] [--summary]
+  (EVENTS: a run directory, events.bin or events.jsonl)
 """
 import argparse
 import bisect
 import collections
 import csv
 import json
+import os
+import struct
 import sys
 
 RUN, RUNQ, WAKE_LAT = "run", "runq", "wake_latency"
@@ -48,6 +51,67 @@ SELF_EVENTS = ("begin", "end", "sys_enter", "sys_exit", "bio", "fault")
 def load_jsonl(path):
     with open(path) as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+# Binary event files written by stalltrace (default): 16-byte header, then
+# struct st_event records (src/ebpf/stalltrace.h), little-endian, 48 bytes.
+_TYPES = {1: "sys_enter", 2: "sys_exit", 3: "sched_switch", 4: "sched_wakeup",
+          5: "sched_wakeup_new", 6: "bio_queue", 7: "blk_issue", 8: "blk_complete",
+          9: "op_begin", 10: "op_end", 11: "page_fault"}
+_RECORD = struct.Struct("<QIIIHHQQII")
+_RW = ((1 << 6, "F"), (1 << 3, "R"), (1 << 4, "W"), (1 << 8, "D"), (1 << 5, "S"), (1 << 7, "M"))
+
+
+def _signed(v, bits):
+    return v - (1 << bits) if v >> (bits - 1) else v
+
+
+def load_bin(path):
+    """Decode events.bin into the same dicts that events.jsonl lines give."""
+    out = []
+    with open(path, "rb") as f:
+        head = f.read(16)
+        magic, schema, size = head[:8], *struct.unpack("<II", head[8:16])
+        if magic.rstrip(b"\0") != b"STEVENT" or size != _RECORD.size:
+            raise SystemExit(f"{path}: not a stalltrace event file (schema {schema}, size {size})")
+        data = f.read()
+    for ts, pid, tid, cpu, typ, flags, a, b, dev, c in _RECORD.iter_unpack(
+            data[: len(data) - len(data) % _RECORD.size]):
+        t = _TYPES.get(typ)
+        if t is None:
+            continue
+        e = {"ts": ts, "type": t, "cpu": cpu, "pid": pid, "tid": tid}
+        if t == "sys_enter":
+            e["nr"] = a
+        elif t == "sys_exit":
+            e.update(nr=a, ret=_signed(b, 64))
+        elif t == "sched_switch":
+            e.update(prev_state=a, next_tid=b, next_pid=c, preempt=flags & 1,
+                     iowait=(flags >> 1) & 1, iowait_known=(flags >> 2) & 1,
+                     prev_idle=(flags >> 9) & 1)
+        elif t in ("bio_queue", "blk_issue", "blk_complete"):
+            e.update(dev=f"{dev >> 20}:{dev & 0xFFFFF}", sector=a, bytes=b,
+                     rw="".join(ch for bit, ch in _RW if flags & bit))
+            if t == "blk_complete":
+                e["error"] = _signed(c, 32)
+        elif t in ("op_begin", "op_end"):
+            e["op_id"] = a
+        elif t == "page_fault":
+            e.update(addr=a, error_code=b)
+        out.append(e)
+    return out
+
+
+def load_events(path):
+    """Events from a run directory, or from an events.bin / events.jsonl file."""
+    if os.path.isdir(path):
+        for name in ("events.bin", "events.jsonl"):
+            if os.path.exists(os.path.join(path, name)):
+                path = os.path.join(path, name)
+                break
+        else:
+            raise SystemExit(f"{path}: no events.bin or events.jsonl")
+    return load_bin(path) if path.endswith(".bin") else load_jsonl(path)
 
 
 def load_ground_truth(path):
@@ -334,7 +398,7 @@ def main():
     args = ap.parse_args()
 
     header, gt_ops = load_ground_truth(args.ground_truth)
-    rows = breakdown(load_jsonl(args.events), gt_ops)
+    rows = breakdown(load_events(args.events), gt_ops)
     if args.csv:
         fields = sorted({k for r in rows for k in r})
         with open(args.csv, "w", newline="") as f:

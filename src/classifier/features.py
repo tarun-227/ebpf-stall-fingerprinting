@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Build the per-operation feature table from traced runs.
 
-A run directory holds events.jsonl and stats.json from stalltrace, and the
+A run directory holds events.bin (or events.jsonl) and stats.json from stalltrace, and the
 workload's ground truth either inside it (gt.jsonl) or next to it
 (<dir>.gt.jsonl, as scripts/smoke_test.sh writes). Every directory under ROOT
-that contains events.jsonl is treated as one run.
+that contains an events file is treated as one run.
 
   features.py ROOT [ROOT...] --out features.csv
 
@@ -29,7 +29,7 @@ IO_WORKLOADS = {"direct_read", "cold_read", "sync_write", "mmap_cold", "mixed"}
 
 # Columns written to the table, in order.
 META = ["run_id", "workload", "threads", "io_size", "pattern", "rep", "seed", "delay_ms",
-        "op_id", "tid", "label", "expected", "run_drop_rate"]
+        "op_id", "tid", "label", "expected", "run_drop_rate", "clock_drift"]
 FEATURES = ["wall_us", "run_f", "runq_f", "wake_f", "blocked_io_f", "blocked_other_f",
             "syscall_f", "n_syscalls", "n_switch_out", "bio_kb", "blk_any", "n_faults",
             "iowait_unknown", "uncovered_f"]
@@ -54,7 +54,7 @@ def reference_label(workload, cpu_f, runq_f, blocked_f):
 def find_runs(roots):
     for root in roots:
         for dirpath, _, files in os.walk(root):
-            if "events.jsonl" not in files:
+            if "events.bin" not in files and "events.jsonl" not in files:
                 continue
             gt = os.path.join(dirpath, "gt.jsonl")
             if not os.path.exists(gt):
@@ -88,7 +88,7 @@ def run_rows(run_dir, gt_path, window_ns=None, legacy_clock_ratio=1.0):
         with open(meta_path) as f:
             meta = json.load(f)
 
-    events = bd.load_jsonl(os.path.join(run_dir, "events.jsonl"))
+    events = bd.load_events(run_dir)
     source = (bd.window_breakdown(events, gt_ops, window_ns) if window_ns
               else bd.breakdown(events, gt_ops))
     rows = []
@@ -118,6 +118,7 @@ def run_rows(run_dir, gt_path, window_ns=None, legacy_clock_ratio=1.0):
             "rep": meta.get("rep", ""),
             "seed": header["seed"],
             "delay_ms": meta.get("delay_ms", ""),
+            "clock_drift": int(bool(header.get("clock_drift_flag", False))),
             "op_id": r["op_id"],
             "tid": r["tid"],
             "label": reference_label(header["workload"], *ref),

@@ -58,7 +58,8 @@ one() {  # one ID REP WORKLOAD THREADS VARIANT [stalltrace options...]
     "$id" "$rep" "$wl" "$thr" "$variant" > "$dir/meta.json"
   local bench=("$BENCH" --workload "$wl" --run-id "$id" --out "$dir/gt.jsonl" --file "$FILE"
                --threads "$thr" --ops "$ops" --seed $((rep * 1000 + n)) --hogs 3
-               --hog-cpu "$HOG_CPU" --cpu-ms 10 --sleep-us 2000 --io-size "${IOSZ[$wl]:-65536}")
+               --hog-cpu "$HOG_CPU" --cpu-ms 10 --sleep-us 2000 --io-size "${IOSZ[$wl]:-65536}"
+               --no-ref)   # no per-op reference syscalls: measure only the tracer
   n=$((n + 1))
   local rc=0
   if [[ "$variant" == off* ]]; then   # off, or offrepeat (noise floor: untraced vs untraced)

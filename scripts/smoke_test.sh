@@ -55,7 +55,7 @@ PY
 
 for name in sleep direct_read contended; do
   echo
-  python3 "$BREAKDOWN" "$OUT/$name/events.jsonl" "$OUT/$name.gt.jsonl" \
+  python3 "$BREAKDOWN" "$OUT/$name" "$OUT/$name.gt.jsonl" \
     --csv "$OUT/$name.ops.csv" --summary
 done
 

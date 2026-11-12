@@ -9,7 +9,8 @@
  * In command mode the workload is forked but held at a gate until every
  * program is attached and its PID is in the traced set, so no early events
  * are missed. Output (never overwritten):
- *   OUTDIR/events.jsonl  one JSON object per kernel event
+ *   OUTDIR/events.bin    raw 48-byte event records (default), or
+ *   OUTDIR/events.jsonl  one JSON object per kernel event (-J)
  *   OUTDIR/stats.json    attach status, per-type produced/dropped/received
  *                        counts, collector CPU time, exit status
  */
@@ -49,6 +50,7 @@ struct options {
 	int linger_ms;
 	pid_t attach_pid;
 	bool verbose;
+	bool json;
 	char **cmd;
 };
 
@@ -94,8 +96,22 @@ struct status {
 
 struct out_ctx {
 	FILE *f;
+	bool binary;
 	unsigned long long received[ST_EV_MAX];
 	unsigned long long malformed;
+};
+
+/*
+ * Binary event file (default): a 16-byte header, then raw struct st_event
+ * records exactly as the kernel produced them. Writing records unformatted
+ * keeps the collector fast enough to drain the ring buffer; formatting JSON
+ * per event used about half a CPU and caused drops on busy workloads.
+ * src/correlation/breakdown.py decodes it.
+ */
+struct bin_header {
+	char magic[8];		/* "STEVENT\0" */
+	__u32 schema;		/* STALLTRACE_SCHEMA_VERSION */
+	__u32 record_size;	/* sizeof(struct st_event) */
 };
 
 static volatile sig_atomic_t stop_requested;
@@ -147,6 +163,8 @@ static void usage(FILE *f)
 "  -p PID        trace an already running process instead of a command\n"
 "  -l MS         keep recording this long after the workload exits (default 200)\n"
 "  -S -C -K -F -M  disable syscalls / scheduler / block / page-fault / marker events\n"
+"  -J            write events.jsonl (one JSON object per event) instead of the\n"
+"                default compact events.bin; slower, for inspection\n"
 "  -v            verbose libbpf output\n",
 		STALLTRACE_MAX_DEVS);
 }
@@ -166,7 +184,7 @@ static void parse_args(int argc, char **argv)
 {
 	int c;
 
-	while ((c = getopt(argc, argv, "+o:d:b:u:p:l:SCKFMvh")) != -1) {
+	while ((c = getopt(argc, argv, "+o:d:b:u:p:l:SCKFMJvh")) != -1) {
 		switch (c) {
 		case 'o':
 			opt.out_dir = optarg;
@@ -200,6 +218,7 @@ static void parse_args(int argc, char **argv)
 		case 'K': opt.fam_block = false; break;
 		case 'F': opt.fam_faults = false; break;
 		case 'M': opt.fam_markers = false; break;
+		case 'J': opt.json = true; break;
 		case 'v': opt.verbose = true; break;
 		case 'h': usage(stdout); exit(0);
 		default: usage(stderr); exit(2);
@@ -289,6 +308,10 @@ static int handle_event(void *ctx, void *data, size_t len)
 		return 0;
 	}
 	o->received[e->type]++;
+	if (o->binary) {
+		fwrite(e, sizeof(*e), 1, o->f);
+		return 0;
+	}
 	a = e->a;
 	b = e->b;
 
@@ -479,8 +502,19 @@ int main(int argc, char **argv)
 		fprintf(stderr, "mkdir %s: %s\n", opt.out_dir, strerror(errno));
 		return 1;
 	}
-	snprintf(events_path, sizeof(events_path), "%s/events.jsonl", opt.out_dir);
+	snprintf(events_path, sizeof(events_path), "%s/events.%s", opt.out_dir,
+		 opt.json ? "jsonl" : "bin");
 	snprintf(stats_path, sizeof(stats_path), "%s/stats.json", opt.out_dir);
+	{
+		char other[PATH_MAX];
+
+		snprintf(other, sizeof(other), "%s/events.%s", opt.out_dir, opt.json ? "bin" : "jsonl");
+		if (access(other, F_OK) == 0) {
+			fprintf(stderr, "%s already holds results; raw data is never overwritten\n",
+				opt.out_dir);
+			return 1;
+		}
+	}
 	if (access(events_path, F_OK) == 0 || access(stats_path, F_OK) == 0) {
 		fprintf(stderr, "%s already holds results; raw data is never overwritten\n",
 			opt.out_dir);
@@ -605,6 +639,13 @@ int main(int argc, char **argv)
 		goto cleanup;
 	}
 	setvbuf(out.f, NULL, _IOFBF, 1 << 20);
+	out.binary = !opt.json;
+	if (out.binary) {
+		struct bin_header h = { .magic = "STEVENT", .schema = STALLTRACE_SCHEMA_VERSION,
+					.record_size = sizeof(struct st_event) };
+
+		fwrite(&h, sizeof(h), 1, out.f);
+	}
 	rb = ring_buffer__new(bpf_map__fd(skel->maps.events), handle_event, &out, NULL);
 	if (!rb) {
 		fprintf(stderr, "failed to create ring buffer: %s\n", strerror(errno));

@@ -8,6 +8,9 @@
 # experiments/processed/<TAG>/ inside the repository:
 #   features.csv, results-ref/ and results-design/ (main evaluation),
 #   window-<N>ms/ (PID-only ablation), delay.json, overhead.json, *.txt logs.
+# The final overhead run is a separate id: for the report's numbers use
+#   OVERHEAD_ID=overhead-wsl-v2 OVERHEAD_OUT=overhead-v2 scripts/analyse_results.sh RAW_DIR
+# With TAG=wsl it also regenerates report/generated/ (tables and plot data).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RAW="${1:?usage: $0 RAW_DIR [TAG]}"
@@ -29,13 +32,20 @@ echo "== injected-delay sweep"
 $PY/features.py "$RAW/delay-sweep-$TAG" --out "$OUT/delay-features.csv" > /dev/null
 $PY/delay_analysis.py "$OUT/delay-features.csv" --out "$OUT/delay.json" | tee "$OUT/delay.txt"
 
-echo "== overhead"
-$PY/overhead.py "$RAW/overhead-$TAG" --out "$OUT/overhead.json" | tee "$OUT/overhead.txt"
+OVH_ID="${OVERHEAD_ID:-overhead-$TAG}"
+OVH_OUT="${OVERHEAD_OUT:-overhead}"
+if [[ -d "$RAW/$OVH_ID" ]]; then
+  echo "== overhead ($OVH_ID)"
+  $PY/overhead.py "$RAW/$OVH_ID" --out "$OUT/$OVH_OUT.json" | tee "$OUT/$OVH_OUT.txt"
+else
+  echo "== overhead: $RAW/$OVH_ID not found, skipped"
+fi
 
 echo "== PID-only window ablation (5, 20, 100 ms)"
+WTMP="$(mktemp -d)"; trap 'rm -rf "$WTMP"' EXIT     # window tables are large; not kept
 for ms in 5 20 100; do
-  $PY/features.py "$RAW/final-$TAG" --out "$OUT/window-${ms}ms.csv" --window-ms "$ms" > /dev/null
-  $PY/evaluate.py "$OUT/window-${ms}ms.csv" --config "$CFG" --out "$OUT/window-${ms}ms" \
+  $PY/features.py "$RAW/final-$TAG" --out "$WTMP/window-${ms}ms.csv" --window-ms "$ms" > /dev/null
+  $PY/evaluate.py "$WTMP/window-${ms}ms.csv" --config "$CFG" --out "$OUT/window-${ms}ms" \
     > "$OUT/window-${ms}ms.txt"
   grep -E '^  (rules|tree)/fused ' "$OUT/window-${ms}ms.txt" | head -2 | sed "s/^/  [${ms} ms] /"
 done
@@ -61,3 +71,7 @@ for part in ("final", "delay-sweep", "overhead"):
               f"drift-flagged runs {drift}")
 PY
 echo "processed results in $OUT"
+if [[ "$TAG" == wsl ]]; then
+  echo "== report tables and figure data"
+  python3 "$ROOT/src/report/make_assets.py" --results "$OUT" --out "$ROOT/report/generated"
+fi

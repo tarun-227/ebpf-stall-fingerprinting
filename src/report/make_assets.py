@@ -205,8 +205,10 @@ def main():
     write(a.out, "tab_h2.tex", table_h2(ref))
     write(a.out, "tab_ablation.tex", table_ablation(ref, windows))
     write(a.out, "f1bars.dat", data_f1bars(ref))
-    if os.path.exists(r("overhead-v2.json")):
-        write(a.out, "tab_overhead.tex", table_overhead(load(r("overhead-v2.json"))))
+    for name in ("overhead-v2.json", "overhead.json"):      # v2 is the final overhead run
+        if os.path.exists(r(name)):
+            write(a.out, "tab_overhead.tex", table_overhead(load(r(name))))
+            break
     if os.path.exists(r("delay.json")):
         for name, text in data_delay(load(r("delay.json"))).items():
             write(a.out, "delay_" + name, text)

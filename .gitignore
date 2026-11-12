@@ -16,3 +16,6 @@ report/*.blg
 report/*.fls
 report/*.fdb_latexmk
 report/main.pdf
+
+# Packaged deliverables (published as release assets)
+deliverables/

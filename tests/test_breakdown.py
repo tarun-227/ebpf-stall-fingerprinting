@@ -136,6 +136,23 @@ class BreakdownTest(unittest.TestCase):
         self.assertEqual((r["run"], r["runq"]), (10000, 0))          # operation window
         self.assertEqual((r["val_run"], r["val_runq"], r["val_uncovered"]), (11100, 3000, 0))
 
+    def test_fixed_windows_without_markers(self):
+        # Thread runs 1000-3000, blocked on I/O 3000-7000, runs to 11000.
+        # Ground truth: one op covering 1000-11000. Windows of 2500 ns.
+        events = [
+            ev(1000, "sys_exit", nr=0),
+            sw(3000, TID, OTHER, state=2, iowait=1),
+            ev(7000, "sched_wakeup"),
+            sw(7000, OTHER, TID),
+            ev(11000, "sys_enter", nr=0),
+        ]
+        g = gt(t_begin=1000, t_end=11000)
+        rows = bd.window_breakdown(events, g, 2500)
+        self.assertEqual(len(rows), 4)                    # 1000-3500 ... 8500-11000
+        self.assertEqual((rows[0]["run"], rows[0]["blocked_io"]), (2000, 500))
+        self.assertEqual(rows[1]["blocked_io"], 2500)
+        self.assertTrue(all(r["gt_op_id"] == 1 for r in rows))
+
     def test_other_threads_are_ignored(self):
         r = self.one([
             ev(1000, "op_begin", op_id=1),

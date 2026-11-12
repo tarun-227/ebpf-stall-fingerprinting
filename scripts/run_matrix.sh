@@ -14,6 +14,10 @@
 #   HOG_CPU [1]  OPS_TOTAL [48]  CPU_MS [10]  SLEEP_US [2000]
 #   RAW_DIR [experiments/raw]  put raw output on a fast local disk; under WSL,
 #                              the Windows drive (/mnt/c) is slow and can cause drops
+#   DELAY_MS [""]   injected dm-delay currently set (recorded in meta.json and the
+#                   run ids; checked against the live dm table when present)
+#   IO_WORKLOADS, OTHER_WORKLOADS   restrict the workload lists
+#   TRANSFER [1]    0 skips the 16 KiB random transfer runs
 # Pass overrides through sudo with env, e.g.
 #   sudo env RAW_DIR=/home/me/raw THREADS="1 4" scripts/run_matrix.sh /home/me/data
 #
@@ -41,8 +45,15 @@ OPS_TOTAL="${OPS_TOTAL:-48}"
 CPU_MS="${CPU_MS:-10}"
 SLEEP_US="${SLEEP_US:-2000}"
 
-IO_WORKLOADS="direct_read cold_read sync_write mmap_cold"
-OTHER_WORKLOADS="warm_read buffered_write mmap_warm cpu cpu_contended sleep neighbor_io mixed"
+IO_WORKLOADS="${IO_WORKLOADS-direct_read cold_read sync_write mmap_cold}"
+OTHER_WORKLOADS="${OTHER_WORKLOADS-warm_read buffered_write mmap_warm cpu cpu_contended sleep neighbor_io mixed}"
+TRANSFER="${TRANSFER:-1}"
+DELAY_MS="${DELAY_MS:-}"
+if [[ -n "$DELAY_MS" ]] && table="$(dmsetup table stall_delay 2>/dev/null)"; then
+  live="$(awk '{print $6}' <<<"$table")"
+  [[ "$live" == "$DELAY_MS" ]] || { echo "DELAY_MS=$DELAY_MS but dm-delay is set to ${live} ms" >&2; exit 1; }
+fi
+DSUF="${DELAY_MS:+-d${DELAY_MS}ms}"
 
 mkdir -p "$DATA" "$OUT"
 FILE="$DATA/matrix-data.bin"
@@ -60,6 +71,7 @@ FILE="$DATA/matrix-data.bin"
   echo "data_dir: $DATA ($(findmnt -no SOURCE,FSTYPE -T "$DATA" | tr -s ' '))"
   echo "reps: $REPS; threads: $THREADS; transfer_reps: $TRANSFER_REPS"
   echo "ops_total: $OPS_TOTAL; cpu_ms: $CPU_MS; sleep_us: $SLEEP_US; hog_cpu: $HOG_CPU; devs: ${DEVS:-all}"
+  echo "delay_ms: ${DELAY_MS:-none}; dm_table: $(dmsetup table stall_delay 2>/dev/null || echo none)"
   echo "stallbench_sha256: $(sha256sum "$BENCH" | cut -d' ' -f1)"
   echo "stalltrace_sha256: $(sha256sum "$TRACE" | cut -d' ' -f1)"
 } > "$OUT/manifest.txt"
@@ -73,8 +85,8 @@ run() {  # run RUN_ID REP WORKLOAD THREADS IO_SIZE PATTERN
   [[ "$pat" == random ]] && extra+=(--random)
   if [[ -e "$dir/events.jsonl" ]]; then echo "skip $id (exists)"; return; fi
   mkdir -p "$dir"
-  printf '{"run_id":"%s","rep":%d,"workload":"%s","threads":%d,"io_size":%d,"pattern":"%s","seed":%d}\n' \
-    "$id" "$rep" "$wl" "$thr" "$io" "$pat" "$seed" > "$dir/meta.json"
+  printf '{"run_id":"%s","rep":%d,"workload":"%s","threads":%d,"io_size":%d,"pattern":"%s","seed":%d,"delay_ms":"%s"}\n' \
+    "$id" "$rep" "$wl" "$thr" "$io" "$pat" "$seed" "$DELAY_MS" > "$dir/meta.json"
   n=$((n + 1))
   # shellcheck disable=SC2086
   if ! "$TRACE" -o "$dir" $DEVS -- "$BENCH" --workload "$wl" --run-id "$id" --out "$dir/gt.jsonl" \
@@ -86,6 +98,7 @@ run() {  # run RUN_ID REP WORKLOAD THREADS IO_SIZE PATTERN
   fi
 }
 
+[[ "$TRANSFER" == 1 ]] || TRANSFER_REPS=""
 total=$(( $(wc -w <<<"$REPS") * $(wc -w <<<"$THREADS") * $(wc -w <<<"$IO_WORKLOADS $OTHER_WORKLOADS")
           + $(wc -w <<<"$TRANSFER_REPS") * 2 * $(wc -w <<<"$IO_WORKLOADS") ))
 echo "matrix $MATRIX_ID: $total runs -> $OUT"
@@ -93,7 +106,7 @@ start=$(date +%s)
 for rep in $REPS; do
   for wl in $IO_WORKLOADS $OTHER_WORKLOADS; do
     for thr in $THREADS; do
-      run "$wl-t$thr-io64k-seq-r$rep" "$rep" "$wl" "$thr" 65536 sequential
+      run "$wl-t$thr-io64k-seq$DSUF-r$rep" "$rep" "$wl" "$thr" 65536 sequential
     done
   done
   echo "  rep $rep done ($n runs, $(( $(date +%s) - start )) s)"
@@ -101,7 +114,7 @@ done
 for rep in $TRANSFER_REPS; do
   for wl in $IO_WORKLOADS; do
     for thr in 1 4; do
-      run "$wl-t$thr-io16k-rand-r$rep" "$rep" "$wl" "$thr" 16384 random
+      run "$wl-t$thr-io16k-rand$DSUF-r$rep" "$rep" "$wl" "$thr" 16384 random
     done
   done
 done

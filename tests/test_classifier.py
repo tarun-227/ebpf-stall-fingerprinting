@@ -20,6 +20,7 @@ def row(label=m.CPU, run="r1", rep=1, **kw):
             "syscall_f": 0.0, "n_syscalls": 0.0, "n_switch_out": 0.0, "bio_kb": 0.0,
             "blk_any": 0.0, "n_faults": 0.0, "iowait_unknown": 0.0}
     base.update(kw)
+    base["blocked_f"] = base["blocked_io_f"] + base["blocked_other_f"]
     return base
 
 
@@ -64,6 +65,34 @@ class RuleTest(unittest.TestCase):
         rows = [DIRECT_READ, SLEEP, CONTENDED, NEIGHBOR]
         th = m.tune_rule(m.rule_fused, rows, ev.macro_f1)
         self.assertTrue(0.4 <= th["dominance"] <= 0.8)
+
+
+class NoIowaitTest(unittest.TestCase):
+    """Without in_iowait, sleep and I/O both look 'blocked'; block evidence must decide."""
+
+    def noiowait(self, r):
+        return dict(r, blocked_f=r["blocked_io_f"] + r["blocked_other_f"])
+
+    def test_scheduler_without_iowait_calls_a_sleep_io(self):
+        self.assertEqual(m.rule_scheduler_noiowait(self.noiowait(SLEEP), TH), m.IO)
+
+    def test_fusion_without_iowait_uses_own_block_io(self):
+        self.assertEqual(m.rule_fused_noiowait(self.noiowait(SLEEP), TH), m.IND)
+        self.assertEqual(m.rule_fused_noiowait(self.noiowait(DIRECT_READ), TH), m.IO)
+        self.assertEqual(m.rule_fused_noiowait(self.noiowait(CONTENDED), TH), m.SCHED)
+
+    def test_block_thread_ignores_other_processes_io(self):
+        self.assertEqual(m.rule_block_thread(NEIGHBOR, TH), m.CPU)
+        self.assertEqual(m.rule_block_device(NEIGHBOR, TH), m.IO)
+
+
+class ReferenceLabelTest(unittest.TestCase):
+    def test_blocked_counts_as_io_only_for_workloads_that_do_io(self):
+        import features as ft
+        self.assertEqual(ft.reference_label("mixed", 0.1, 0.0, 0.9), m.IO)
+        self.assertEqual(ft.reference_label("sleep", 0.05, 0.0, 0.95), m.IND)
+        self.assertEqual(ft.reference_label("cpu", 0.3, 0.7, 0.0), m.SCHED)
+        self.assertEqual(ft.reference_label("direct_read", 0.45, 0.0, 0.55), m.IND)
 
 
 class TreeTest(unittest.TestCase):

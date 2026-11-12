@@ -29,11 +29,17 @@ CAUSES = (IO, SCHED, CPU)
 FEATURE_SETS = {
     "syscall": ["wall_us", "syscall_f", "n_syscalls"],
     "block": ["wall_us", "bio_kb", "blk_any"],
+    "block_thread": ["wall_us", "bio_kb"],      # I/O this thread submitted
+    "block_device": ["wall_us", "blk_any"],     # any I/O on the device meanwhile
     "scheduler": ["wall_us", "run_f", "runq_f", "wake_f", "blocked_io_f", "blocked_other_f",
                   "n_switch_out"],
+    # Scheduler evidence without the kernel's in_iowait flag: blocked is blocked.
+    "scheduler_noiowait": ["wall_us", "run_f", "runq_f", "wake_f", "blocked_f",
+                           "n_switch_out"],
 }
-FEATURE_SETS["fused"] = (FEATURE_SETS["scheduler"]
-                         + ["syscall_f", "n_syscalls", "bio_kb", "blk_any", "n_faults"])
+_OTHER = ["syscall_f", "n_syscalls", "bio_kb", "blk_any", "n_faults"]
+FEATURE_SETS["fused"] = FEATURE_SETS["scheduler"] + _OTHER
+FEATURE_SETS["fused_noiowait"] = FEATURE_SETS["scheduler_noiowait"] + _OTHER
 
 DEFAULT_THRESHOLDS = {"dominance": 0.6}
 
@@ -91,8 +97,51 @@ def rule_block(r, th, abstain=True):
     return IO if _block_evidence(r) else CPU
 
 
+def rule_block_thread(r, th, abstain=True):
+    """Block I/O submitted by this thread during the operation means I/O."""
+    del th, abstain
+    return IO if r["bio_kb"] > 0 else CPU
+
+
+def rule_block_device(r, th, abstain=True):
+    """Any block activity on the device during the operation means I/O."""
+    del th, abstain
+    return IO if r["blk_any"] > 0 else CPU
+
+
+def rule_scheduler_noiowait(r, th, abstain=True):
+    """Scheduler tool without in_iowait: it can only assume blocking is I/O."""
+    t = th["dominance"]
+    cpu = r["run_f"] + r["wake_f"]
+    scores = ((r["blocked_f"], IO), (r["runq_f"], SCHED), (cpu, CPU))
+    if not abstain:
+        return max(scores)[1]
+    for score, label in scores:
+        if score > t:
+            return label
+    return IND
+
+
+def rule_fused_noiowait(r, th, abstain=True):
+    """Fusion without in_iowait: the thread's own block I/O decides what blocking was."""
+    t = th["dominance"]
+    cpu = r["run_f"] + r["wake_f"]
+    if not abstain:
+        return max(((r["blocked_f"], IO), (r["runq_f"], SCHED), (cpu, CPU)))[1]
+    if r["runq_f"] > t:
+        return SCHED
+    if r["blocked_f"] > t:
+        return IO if r["bio_kb"] > 0 else IND    # blocked with no own I/O: e.g. a sleep
+    if cpu > t:
+        return CPU
+    return IND
+
+
 RULES = {"fused": rule_fused, "scheduler": rule_scheduler,
-         "syscall": rule_syscall, "block": rule_block}
+         "syscall": rule_syscall, "block": rule_block,
+         "block_thread": rule_block_thread, "block_device": rule_block_device,
+         "scheduler_noiowait": rule_scheduler_noiowait, "fused_noiowait": rule_fused_noiowait}
+UNTUNED = {"block", "block_thread", "block_device"}   # rules with no threshold
 
 
 def tune_rule(rule, rows, metric, grid=None):

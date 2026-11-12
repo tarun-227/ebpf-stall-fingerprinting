@@ -26,7 +26,7 @@ $(OUT):
 	mkdir -p $@
 
 $(OUT)/stallbench: src/workloads/stallbench.c | $(OUT)
-	$(CC) $(CFLAGS) -pthread $< -o $@
+	$(CC) $(CFLAGS) -pthread $< -o $@ -lm
 
 $(OUT)/vmlinux.h: | $(OUT)
 	@test -n "$(BPFTOOL)" || { echo "bpftool not found; install linux-tools-$$(uname -r) or linux-tools-generic" >&2; exit 1; }

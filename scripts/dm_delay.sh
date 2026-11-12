@@ -3,6 +3,10 @@
 # gets a known extra latency (ground truth for I/O-wait operations).
 #
 #   sudo scripts/dm_delay.sh create DISK DELAY_MS     e.g. create sdb 10
+#   sudo scripts/dm_delay.sh create-loop FILE SIZE_MB DELAY_MS
+#                                       no spare disk (e.g. WSL): back the delay device
+#                                       with a loop device on FILE (direct I/O, so the
+#                                       page cache is not used twice)
 #   sudo scripts/dm_delay.sh format --wipe DISK       mkfs.ext4 on the delay device (DESTROYS DISK)
 #   sudo scripts/dm_delay.sh mount MOUNTPOINT
 #   sudo scripts/dm_delay.sh set DELAY_MS             change the delay without remounting
@@ -17,6 +21,7 @@ set -euo pipefail
 NAME=stall_delay
 MAPPER=/dev/mapper/$NAME
 STATE=/run/stall_delay.disk
+LOOP_STATE=/run/stall_delay.loop   # present when the device sits on a loop file
 
 die() { echo "dm_delay.sh: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run as root (sudo)"
@@ -57,6 +62,23 @@ case "$cmd" in
     echo "$disk" > "$STATE"
     echo "created $MAPPER on /dev/$disk with ${delay} ms delay"
     ;;
+  create-loop)
+    [[ $# -eq 3 ]] || die "usage: create-loop FILE SIZE_MB DELAY_MS"
+    file="$1"; size="$2"; delay="$3"
+    is_uint "$size" && is_uint "$delay" || die "SIZE_MB and DELAY_MS must be whole numbers"
+    dmsetup info "$NAME" >/dev/null 2>&1 && die "$NAME already exists (use set or remove)"
+    modprobe dm_delay 2>/dev/null || true
+    grep -qw delay <(dmsetup targets) || die "dm-delay target not available in this kernel"
+    mkdir -p "$(dirname "$file")"
+    [[ -f "$file" ]] || truncate -s "${size}M" "$file"
+    loopdev="$(losetup --direct-io=on -f --show "$file")"
+    disk="${loopdev#/dev/}"
+    dmsetup create "$NAME" --table "$(table_for "$disk" "$delay")"
+    echo "$disk" > "$STATE"
+    echo "$loopdev" > "$LOOP_STATE"
+    echo "created $MAPPER on $loopdev ($file, ${size} MiB) with ${delay} ms delay"
+    echo "next: sudo $0 format --wipe $disk && sudo $0 mount MOUNTPOINT"
+    ;;
   format)
     [[ "${1:-}" == "--wipe" && $# -eq 2 ]] || die "usage: format --wipe DISK  (erases everything on DISK)"
     disk="$2"
@@ -96,11 +118,15 @@ case "$cmd" in
       umount "$mnt"
     fi
     dmsetup remove "$NAME"
+    if [[ -f "$LOOP_STATE" ]]; then
+      losetup -d "$(cat "$LOOP_STATE")" || true
+      rm -f "$LOOP_STATE"
+    fi
     rm -f "$STATE"
     echo "removed $NAME"
     ;;
   *)
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac

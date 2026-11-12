@@ -153,7 +153,8 @@ def build_classifiers(dev, cfg):
     """name -> (predict(row, abstain), description). All tuning uses dev only."""
     out = {}
     for src, rule in m.RULES.items():
-        th = m.tune_rule(rule, dev, macro_f1) if src != "block" else dict(m.DEFAULT_THRESHOLDS)
+        th = (dict(m.DEFAULT_THRESHOLDS) if src in m.UNTUNED
+              else m.tune_rule(rule, dev, macro_f1))
         out[f"rules/{src}"] = (lambda r, a, rule=rule, th=th: rule(r, th, a),
                                {"type": "rules", "source": src, "thresholds": th})
     for src, feats in m.FEATURE_SETS.items():
@@ -177,10 +178,10 @@ def score_all(test, classifiers, cfg, label):
         entry["description"] = desc
         res[name] = entry
     print(f"\n{label}: {len(test)} operations in {len({r['run_id'] for r in test})} runs")
-    print(f"  {'classifier':<18}{'macro-F1':>9}  {'95% CI':<15}{'accuracy':>9}"
+    print(f"  {'classifier':<26}{'macro-F1':>9}  {'95% CI':<15}{'accuracy':>9}"
           f"{'abstain':>9}{'hc-error':>9}{'hc-error forced':>17}")
     for name, e in res.items():
-        print(f"  {name:<18}{e['macro_f1']:>9.3f}  [{e['macro_f1_ci'][0]:.3f}, "
+        print(f"  {name:<26}{e['macro_f1']:>9.3f}  [{e['macro_f1_ci'][0]:.3f}, "
               f"{e['macro_f1_ci'][1]:.3f}]{e['accuracy']:>9.3f}{e['abstention']:>9.3f}"
               f"{e['hc_error']:>9.3f}{e['forced']['hc_error']:>17.3f}")
     return res, preds
@@ -226,34 +227,60 @@ def main():
     # Confusion matrices and per-class scores for the fused models.
     results["fused_detail"] = {
         name: {"confusion": confusion(truth, preds[name]), "per_class": per_class(truth, preds[name])}
-        for name in ("rules/fused", "tree/fused")}
+        for name in ("rules/fused", "tree/fused", "rules/fused_noiowait", "tree/fused_noiowait")}
 
-    # H1: fused vs each single source (paired bootstrap over runs).
+    # H1: each fused variant vs the single sources it combines (paired bootstrap).
+    # With in_iowait the scheduler layer alone can tell I/O blocking from other
+    # blocking; without it, that distinction has to come from block evidence.
     h1 = {}
+    comparisons = (("fused", ("syscall", "block", "block_thread", "block_device", "scheduler")),
+                   ("fused_noiowait", ("syscall", "block", "scheduler_noiowait")))
     for fam in ("rules", "tree"):
-        for src in ("syscall", "block", "scheduler"):
-            a, b = preds[f"{fam}/fused"], preds[f"{fam}/{src}"]
-            h1[f"{fam}: fused - {src}"] = {
-                "macro_f1_diff": macro_f1(truth, a) - macro_f1(truth, b),
-                "ci": bootstrap(test, a, macro_f1, cfg["bootstrap"], cfg["seed"], b)}
+        for fused, sources in comparisons:
+            for src in sources:
+                a, b = preds[f"{fam}/{fused}"], preds[f"{fam}/{src}"]
+                h1[f"{fam}: {fused} - {src}"] = {
+                    "macro_f1_diff": macro_f1(truth, a) - macro_f1(truth, b),
+                    "ci": bootstrap(test, a, macro_f1, cfg["bootstrap"], cfg["seed"], b)}
     results["H1"] = h1
     print("\nH1 (fused minus single source, macro-F1, 95% CI):")
     for k, v in h1.items():
-        print(f"  {k:<26}{v['macro_f1_diff']:+.3f}  [{v['ci'][0]:+.3f}, {v['ci'][1]:+.3f}]")
+        print(f"  {k:<42}{v['macro_f1_diff']:+.3f}  [{v['ci'][0]:+.3f}, {v['ci'][1]:+.3f}]")
 
     # H2: abstaining vs forced, high-confidence error rate.
     h2 = {}
     for fam in ("rules", "tree"):
-        a, f = preds[f"{fam}/fused"], preds[f"{fam}/fused/forced"]
-        h2[fam] = {"hc_error_abstain": hc_error(truth, a), "hc_error_forced": hc_error(truth, f),
-                   "abstention": abstention(truth, a),
-                   "diff_ci": bootstrap(test, f, hc_error, cfg["bootstrap"], cfg["seed"], a)}
+        for fused in ("fused", "fused_noiowait"):
+            a, f = preds[f"{fam}/{fused}"], preds[f"{fam}/{fused}/forced"]
+            h2[f"{fam}/{fused}"] = {
+                "hc_error_abstain": hc_error(truth, a), "hc_error_forced": hc_error(truth, f),
+                "abstention": abstention(truth, a),
+                "diff_ci": bootstrap(test, f, hc_error, cfg["bootstrap"], cfg["seed"], a)}
     results["H2"] = h2
     print("\nH2 (high-confidence error, forced minus abstaining, 95% CI):")
     for k, v in h2.items():
-        print(f"  {k:<6} forced {v['hc_error_forced']:.3f}  abstaining {v['hc_error_abstain']:.3f}"
+        print(f"  {k:<21} forced {v['hc_error_forced']:.3f}  abstaining {v['hc_error_abstain']:.3f}"
               f"  (abstains on {v['abstention']:.1%})  diff CI [{v['diff_ci'][0]:+.3f}, "
               f"{v['diff_ci'][1]:+.3f}]")
+
+    # Sensitivity: drop operations whose reference share is within 5 points of
+    # the dominance line, where the label itself is uncertain.
+    if args.truth == "reference" and test and "ref_margin" in test[0]:
+        keep = [i for i, r in enumerate(test) if r["ref_margin"] >= 0.05]
+        kt = [truth[i] for i in keep]
+        sens = {"kept_fraction": len(keep) / len(test)}
+        for name in ("rules/fused", "tree/fused", "rules/fused_noiowait", "tree/fused_noiowait",
+                     "tree/scheduler", "tree/syscall", "tree/block"):
+            kp = [preds[name][i] for i in keep]
+            sens[name] = {"macro_f1": macro_f1(kt, kp), "accuracy": accuracy(kt, kp),
+                          "hc_error": hc_error(kt, kp)}
+        results["sensitivity_margin_0.05"] = sens
+        print(f"\nSensitivity: excluding operations within 0.05 of the dominance line "
+              f"(keeps {sens['kept_fraction']:.1%})")
+        for k, v in sens.items():
+            if k != "kept_fraction":
+                print(f"  {k:<26} macro-F1 {v['macro_f1']:.3f}  accuracy {v['accuracy']:.3f}"
+                      f"  hc-error {v['hc_error']:.3f}")
 
     # Feature ablations (tree, so the model can re-weight what is left).
     abl = {}
@@ -272,14 +299,58 @@ def main():
         print(f"  {k:<22}{v['macro_f1']:.3f}  [{v['ci'][0]:.3f}, {v['ci'][1]:.3f}]")
 
     # Transfer: tuned/trained on one I/O size and pattern, tested on another.
+    # The transfer set holds only I/O workloads, so macro-F1 there is dominated
+    # by a few rare-class operations; the fair comparison is accuracy and
+    # per-class recall against the SAME workloads at the training size/pattern.
     if cfg.get("transfer"):
         tr = [r for r in dev if matches(r, cfg["transfer"]["train_filter"])
               or r["workload"] in cfg["transfer"]["always_include"]]
         te_all = [r for r in rows if matches(r, cfg["transfer"]["test_filter"])]
-        te = [r for r in te_all if str(r["rep"]) in {str(x) for x in cfg["test_reps"]}] or te_all
+        test_reps = {str(x) for x in cfg["test_reps"]}
+        te = [r for r in te_all if str(r["rep"]) in test_reps] or te_all
+        xfer_wl = {r["workload"] for r in te}
+        same = [r for r in test if r["workload"] in xfer_wl
+                and matches(r, cfg["transfer"]["train_filter"])]
         if tr and te:
-            results["transfer"], _ = score_all(te, build_classifiers(tr, cfg), cfg,
-                                               "Transfer (different I/O size and pattern)")
+            clf = build_classifiers(tr, cfg)
+            results["transfer"], tpreds = score_all(
+                te, clf, cfg, "Transfer (different I/O size and pattern)")
+            te_truth = [r["label"] for r in te]
+            same_truth = [r["label"] for r in same]
+            cmp = {}
+            print(f"\n  accuracy on the same workloads: trained size/pattern ({len(same)} ops)"
+                  f" vs transfer size/pattern ({len(te)} ops)")
+            for name in ("rules/fused", "tree/fused", "rules/fused_noiowait",
+                         "tree/fused_noiowait", "tree/scheduler"):
+                predict = clf[name][0]
+                acc_same = accuracy(same_truth, [predict(r, True) for r in same]) if same else None
+                acc_xfer = accuracy(te_truth, tpreds[name])
+                rec = {k: v["recall"] for k, v in per_class(te_truth, tpreds[name]).items()
+                       if v["support"]}
+                cmp[name] = {"accuracy_trained_setting": acc_same, "accuracy_transfer": acc_xfer,
+                             "recall_transfer": rec}
+                same_s = f"{acc_same:.3f}" if acc_same is not None else "  n/a"
+                print(f"  {name:<26} {same_s} -> {acc_xfer:.3f}   recall: "
+                      + ", ".join(f"{k.split('_')[0]} {v:.2f}" for k, v in rec.items()))
+            results["transfer_comparison"] = cmp
+
+    # Tracer validation over the whole matrix: trace vs kernel accounting over
+    # the same window, per workload.
+    vals = [r for r in rows if isinstance(r.get("val_abs_err_f"), float)]
+    if vals:
+        byw = {}
+        for r in vals:
+            byw.setdefault(r["workload"], []).append(r["val_abs_err_f"])
+        tv = {}
+        print("\nTracer vs kernel accounting, same window (sum of |error| over cpu/runq/blocked,"
+              " share of wall):")
+        for wl in sorted(byw):
+            e = sorted(byw[wl])
+            tv[wl] = {"n": len(e), "mean": sum(e) / len(e), "median": e[len(e) // 2],
+                      "p95": e[int(0.95 * (len(e) - 1))]}
+            print(f"  {wl:<16} n={len(e):<5} mean {tv[wl]['mean']:.4f}  median "
+                  f"{tv[wl]['median']:.4f}  p95 {tv[wl]['p95']:.4f}")
+        results["tracer_validation"] = tv
 
     with open(os.path.join(args.out, "results.json"), "w") as f:
         json.dump(results, f, indent=2, default=str)

@@ -187,6 +187,69 @@ def breakdown(events, gt_ops):
     return rows
 
 
+def window_breakdown(events, gt_ops, width_ns, min_cover=0.5):
+    """PID-only mode: ignore the markers and cut each traced thread's timeline
+    into fixed windows of width_ns, as a tool without operation boundaries
+    would. Each window gets the same features as an operation. For scoring
+    only, it is matched to the ground-truth operation (same thread) that
+    overlaps it most; windows less than min_cover inside any operation are
+    dropped. Returns rows shaped like breakdown()'s, plus "gt_op_id"."""
+    tids = {tid for tid, _ in gt_ops}
+    completions = sorted(e["ts"] for e in events if e["type"] == "blk_complete")
+    ops_by_tid = collections.defaultdict(list)
+    for (tid, op_id), g in gt_ops.items():
+        ops_by_tid[tid].append((g["t_begin_ns"], g["t_end_ns"], op_id, g))
+    rows = []
+    for tid, items in per_thread_timeline(events, tids).items():
+        ops = sorted(ops_by_tid[tid])
+        if not ops:
+            continue
+        timeline = StateTimeline(items)
+        syscalls, enter = [], None   # (start, end) intervals
+        bios, faults, unknown = [], [], []
+        for ts, _, kind, payload in items:
+            if kind == "sys_enter":
+                enter = ts
+            elif kind == "sys_exit" and enter is not None:
+                syscalls.append((enter, ts))
+                enter = None
+            elif kind == "bio":
+                bios.append((ts, payload))
+            elif kind == "fault":
+                faults.append(ts)
+            elif kind == "out" and not payload[1]:
+                unknown.append(ts)
+        start, end = ops[0][0], ops[-1][1]
+        a, k = start, 0
+        while a + width_ns <= end:
+            b = a + width_ns
+            best, cover = None, 0
+            for ob, oe, op_id, g in ops:          # few ops per thread: linear is fine
+                ov = min(oe, b) - max(ob, a)
+                if ov > cover:
+                    best, cover = (op_id, g), ov
+            if best and cover >= min_cover * width_ns:
+                row = {"tid": tid, "op_id": k, "gt_op_id": best[0], "begin_ts": a, "end_ts": b,
+                       "wall": width_ns, **timeline.measure(a, b)}
+                inside = [(max(s, a), min(e, b)) for s, e in syscalls if e > a and s < b]
+                row["n_syscalls"] = len(inside)
+                row["syscall_ns"] = sum(e - s for s, e in inside)
+                row["bio_bytes"] = sum(n for t, n in bios if a <= t < b)
+                row["n_faults"] = sum(1 for t in faults if a <= t < b)
+                row["n_switch_out"] = sum(1 for ts, _, kind, _ in items
+                                          if kind == "out" and a <= ts < b)
+                row["iowait_unknown"] = any(a <= t < b for t in unknown)
+                row["blk_completions_any"] = (bisect.bisect_right(completions, b)
+                                              - bisect.bisect_left(completions, a))
+                g = best[1]
+                row.update({k2: g[k2] for k2 in ("workload", "expected", "ref_label",
+                                                 "ref_wall_ns", "ref_cpu_ns", "ref_runq_ns",
+                                                 "ref_blocked_ns")})
+                rows.append(row)
+            a, k = b, k + 1
+    return rows
+
+
 def finish(op, timeline, gt, completions):
     lo = bisect.bisect_left(completions, op["begin_ts"])
     hi = bisect.bisect_right(completions, op["end_ts"])

@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <math.h>
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
@@ -503,21 +504,87 @@ static void read_ref(int ss_fd, struct ref_sample *s)
 	s->runq = -1;	/* never got a stable sample: mark the reference unknown */
 }
 
-/* Dominance rule applied to the reference measurement. */
-static const char *ref_label(const struct rec *r, const char *design)
+/* Does this workload's operation itself read or write the file? */
+static bool op_does_io(void)
+{
+	switch (cfg.wl) {
+	case WL_DIRECT_READ:
+	case WL_COLD_READ:
+	case WL_SYNC_WRITE:
+	case WL_MMAP_COLD:
+	case WL_MIXED:
+		return true;
+	default:
+		return false;
+	}
+}
+
+/*
+ * Rate of the kernel's per-thread clocks (sched_clock: thread CPU time and
+ * schedstat run_delay) relative to CLOCK_MONOTONIC. They should agree, but in
+ * a VM with a mis-calibrated TSC sched_clock can run fast or slow (1.09 was
+ * seen under WSL2). Measured by spinning, uncontended, before helpers start;
+ * the best of three is kept because preemption can only lower the ratio.
+ */
+static double clock_ratio = 1.0;
+static double clock_ratio_end = 0.0;	/* re-measured after the run, as a drift check */
+
+static double measure_ratio_once(void);
+
+static void measure_clock_ratio(void)
+{
+	double r = measure_ratio_once();
+
+	if (r > 0.5 && r < 2.0)
+		clock_ratio = r;
+}
+
+static double measure_ratio_once(void)
+{
+	double best = 0.0;
+
+	for (int i = 0; i < 3; i++) {
+		struct timespec a, b;
+		uint64_t w0, w1;
+		double cpu, r;
+
+		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &a);
+		w0 = now_ns();
+		while (now_ns() - w0 < 100000000ULL)
+			spin(10000);
+		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &b);
+		w1 = now_ns();
+		cpu = (double)(b.tv_sec - a.tv_sec) * 1e9 + (double)(b.tv_nsec - a.tv_nsec);
+		r = cpu / (double)(w1 - w0);
+		if (r > best)
+			best = r;
+	}
+	return best;
+}
+
+/* Kernel CPU and run-queue time converted to wall-clock nanoseconds. */
+static double ref_cpu_wall(const struct rec *r) { return (double)r->ref_cpu_ns / clock_ratio; }
+static double ref_runq_wall(const struct rec *r) { return (double)r->ref_runq_ns / clock_ratio; }
+
+/*
+ * Dominance rule applied to the reference measurement, on the wall-clock
+ * scale. Blocked time counts as I/O only when the operation does I/O (a sleep
+ * blocks without I/O); the design label is not used, so a mixed op whose read
+ * happened to be slow is correctly I/O-dominated.
+ */
+static const char *ref_label(const struct rec *r)
 {
 	double wall = (double)r->ref_wall_ns, blocked;
 
 	if (r->ref_runq_ns < 0 || wall <= 0)
 		return "UNKNOWN";
-	blocked = wall - (double)r->ref_cpu_ns - (double)r->ref_runq_ns;
-	if ((double)r->ref_cpu_ns / wall > DOMINANCE)
+	blocked = wall - ref_cpu_wall(r) - ref_runq_wall(r);
+	if (ref_cpu_wall(r) / wall > DOMINANCE)
 		return "SYSCALL_CPU_DOMINATED";
-	if ((double)r->ref_runq_ns / wall > DOMINANCE)
+	if (ref_runq_wall(r) / wall > DOMINANCE)
 		return "SCHEDULER_WAIT_DOMINATED";
 	if (blocked / wall > DOMINANCE)
-		/* Blocked time is I/O only when the design says the op does I/O. */
-		return strcmp(design, "IO_WAIT_DOMINATED") ? "INDETERMINATE" : "IO_WAIT_DOMINATED";
+		return op_does_io() ? "IO_WAIT_DOMINATED" : "INDETERMINATE";
 	return "INDETERMINATE";
 }
 
@@ -749,7 +816,8 @@ static void write_results(struct worker *ws, uint64_t t_start, uint64_t t_end)
 		"\"ops_per_thread\":%d,\"seed\":%" PRIu64 ",\"hogs\":%d,\"hog_cpu\":%d,"
 		"\"sleep_us\":%ld,\"cpu_ms\":%.3f,\"gap_us\":%ld,"
 		"\"usable_cpus\":%d,\"neighbor_cpu\":%d,"
-		"\"iters_per_ms\":%" PRIu64 ",\"cpu_iters\":%" PRIu64 ","
+		"\"iters_per_ms\":%" PRIu64 ",\"cpu_iters\":%" PRIu64 ",\"clock_ratio\":%.5f,"
+		"\"clock_ratio_end\":%.5f,\"clock_drift_flag\":%s,"
 		"\"t_start_ns\":%" PRIu64 ",\"t_end_ns\":%" PRIu64 ","
 		"\"ops_total\":%ld,\"ops_failed\":%ld}\n",
 		SCHEMA_VERSION, cfg.run_id, (int)getpid(), wl_names[cfg.wl], label,
@@ -757,15 +825,20 @@ static void write_results(struct worker *ws, uint64_t t_start, uint64_t t_end)
 		cfg.io_size, cfg.random ? "random" : "sequential", cfg.threads, cfg.ops,
 		cfg.seed, cfg.wl == WL_CPU_CONTENDED ? cfg.hogs : 0, cfg.hog_cpu,
 		cfg.wl == WL_SLEEP ? cfg.sleep_us : 0, cfg.cpu_ms, cfg.gap_us,
-		usable_cpus, neighbor_cpu, iters_per_ms, cpu_iters, t_start, t_end,
+		usable_cpus, neighbor_cpu, iters_per_ms, cpu_iters, clock_ratio, clock_ratio_end,
+		fabs(clock_ratio_end - clock_ratio) > 0.01 * clock_ratio ? "true" : "false",
+		t_start, t_end,
 		total_ops, failed);
 
 	for (int t = 0; t < cfg.threads; t++) {
 		for (int i = 0; i < ws[t].nrecs; i++) {
 			const struct rec *r = &ws[t].recs[i];
 
-			int64_t blocked = r->ref_runq_ns < 0 ? -1 :
-				r->ref_wall_ns - r->ref_cpu_ns - r->ref_runq_ns;
+			/* ref_cpu_ns/ref_runq_ns are on the wall-clock scale (divided by
+			 * clock_ratio); the *_raw_ns fields keep the kernel's values. */
+			int64_t cpu = r->ref_runq_ns < 0 ? -1 : (int64_t)ref_cpu_wall(r);
+			int64_t runq = r->ref_runq_ns < 0 ? -1 : (int64_t)ref_runq_wall(r);
+			int64_t blocked = r->ref_runq_ns < 0 ? -1 : r->ref_wall_ns - cpu - runq;
 
 			fprintf(f,
 				"{\"type\":\"op\",\"run_id\":\"%s\",\"op_id\":%" PRIu64 ","
@@ -775,12 +848,13 @@ static void write_results(struct worker *ws, uint64_t t_start, uint64_t t_end)
 				"\"ref_t0_ns\":%" PRIu64 ",\"ref_t1_ns\":%" PRIu64 ","
 				"\"ref_wall_ns\":%" PRId64 ",\"ref_cpu_ns\":%" PRId64 ","
 				"\"ref_runq_ns\":%" PRId64 ",\"ref_blocked_ns\":%" PRId64 ","
+				"\"ref_cpu_raw_ns\":%" PRId64 ",\"ref_runq_raw_ns\":%" PRId64 ","
 				"\"ref_label\":\"%s\"}\n",
 				cfg.run_id, r->op_id, t, (int)ws[t].tid, wl_names[cfg.wl], label,
 				r->t_begin, r->t_end, r->t_end - r->t_begin,
 				r->bytes < 0 ? 0 : r->bytes, r->err,
-				r->ref_t0, r->ref_t1, r->ref_wall_ns, r->ref_cpu_ns, r->ref_runq_ns,
-				blocked < 0 ? 0 : blocked, ref_label(r, label));
+				r->ref_t0, r->ref_t1, r->ref_wall_ns, cpu, runq,
+				blocked < 0 ? 0 : blocked, r->ref_cpu_ns, r->ref_runq_ns, ref_label(r));
 		}
 	}
 	if (fclose(f) != 0)
@@ -956,6 +1030,7 @@ int main(int argc, char **argv)
 	}
 
 	setup_cpus();
+	measure_clock_ratio();
 	calibrate_cpu();
 
 	if (cfg.wl == WL_MMAP_COLD || cfg.wl == WL_MMAP_WARM) {
@@ -997,6 +1072,7 @@ int main(int argc, char **argv)
 	t_end = now_ns();
 
 	stop_helpers();
+	clock_ratio_end = measure_ratio_once();
 	if (map_base && map_base != MAP_FAILED)
 		munmap(map_base, cfg.file_size);
 	if (fd_map >= 0)

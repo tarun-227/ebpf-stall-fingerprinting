@@ -1,0 +1,43 @@
+if blocked_io_f <= 0.6516:
+    if runq_f <= 0.04743:
+        if blocked_io_f <= 7.51e-05:
+            if syscall_f <= 0.9999:
+                -> SYSCALL_CPU_DOMINATED (0.79, n=2380)
+            else:
+                -> IO_WAIT_DOMINATED (0.97, n=32)
+        else:
+            if syscall_f <= 0.8404:
+                -> INDETERMINATE (0.91, n=277)
+            else:
+                -> IO_WAIT_DOMINATED (0.96, n=24)
+    else:
+        if syscall_f <= 0.04241:
+            if blk_any <= 0.5:
+                -> SCHEDULER_WAIT_DOMINATED (0.95, n=6437)
+            else:
+                -> SCHEDULER_WAIT_DOMINATED (0.61, n=285)
+        else:
+            if run_f <= 0.2208:
+                -> INDETERMINATE (0.95, n=61)
+            else:
+                -> INDETERMINATE (0.82, n=49)
+else:
+    if blocked_io_f <= 0.8663:
+        if syscall_f <= 0.9182:
+            if syscall_f <= 0.3783:
+                -> IO_WAIT_DOMINATED (1.00, n=5)
+            else:
+                -> INDETERMINATE (0.89, n=110)
+        else:
+            if run_f <= 0.004533:
+                -> INDETERMINATE (0.92, n=12)
+            else:
+                -> IO_WAIT_DOMINATED (0.97, n=104)
+    else:
+        if syscall_f <= 0.4616:
+            -> IO_WAIT_DOMINATED (1.00, n=7365)
+        else:
+            if syscall_f <= 0.9427:
+                -> INDETERMINATE (0.92, n=26)
+            else:
+                -> IO_WAIT_DOMINATED (0.91, n=3546)

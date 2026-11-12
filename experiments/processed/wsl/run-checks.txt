@@ -1,0 +1,3 @@
+final-wsl        runs  204  events     766242  dropped 4145 (0.5410%)  clock ratio 0.9231-1.0379  drift-flagged 26
+delay-sweep-wsl  runs  108  events     326663  dropped 0 (0.0000%)  clock ratio 0.9400-1.0214  drift-flagged 15
+overhead-wsl     runs  230  events   47494020  dropped 15346658 (32.3128%)  clock ratio 0.9231-1.0910  drift-flagged 39

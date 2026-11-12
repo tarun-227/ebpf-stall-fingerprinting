@@ -1,0 +1,6 @@
+run_id: overhead-wsl
+date: 2026-11-12T13:14:07Z
+kernel: 6.6.87.2-microsoft-standard-WSL2; cpus: 8; virtualisation: wsl
+reps: 1 2 3 4 5; devs: -d 254:0 -d 7:0
+stallbench_sha256: 498252c2c5e35129405df3f5534000c71e08e18f8b4b73dbb9d335dcffe0555e
+stalltrace_sha256: 02263e368285281649b63125a47f1c1366babe9dbed44eeb1eeefed41f3c0e43

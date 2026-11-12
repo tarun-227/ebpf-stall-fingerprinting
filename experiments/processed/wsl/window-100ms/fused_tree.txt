@@ -1,0 +1,22 @@
+if blocked_io_f <= 0.5582:
+    if runq_f <= 0.5512:
+        if run_f <= 0.6731:
+            if syscall_f <= 0.0006025:
+                -> INDETERMINATE (0.54, n=13)
+            else:
+                -> INDETERMINATE (1.00, n=12)
+        else:
+            -> SYSCALL_CPU_DOMINATED (1.00, n=11)
+    else:
+        if run_f <= 0.3894:
+            if blk_any <= 1.5:
+                -> SCHEDULER_WAIT_DOMINATED (1.00, n=244)
+            else:
+                -> SCHEDULER_WAIT_DOMINATED (0.92, n=24)
+        else:
+            -> SCHEDULER_WAIT_DOMINATED (0.80, n=5)
+else:
+    if run_f <= 0.1889:
+        -> IO_WAIT_DOMINATED (1.00, n=370)
+    else:
+        -> IO_WAIT_DOMINATED (0.80, n=5)

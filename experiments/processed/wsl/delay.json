@@ -1,0 +1,290 @@
+{
+  "cold_read/t1": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 701.1185,
+      "kernel_blocked_us": 703.5915,
+      "abs_err_us": 3.1409999999999973,
+      "io_label_share": 0.75
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 11693.388500000001,
+      "kernel_blocked_us": 11690.11,
+      "abs_err_us": 7.079000000000011,
+      "io_label_share": 1.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 23562.596,
+      "kernel_blocked_us": 23560.391000000003,
+      "abs_err_us": 4.486999999999332,
+      "io_label_share": 1.0
+    },
+    "slope_waits_per_delay": 1.051666039690171
+  },
+  "cold_read/t4": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 793.2969999999999,
+      "kernel_blocked_us": 791.1315,
+      "abs_err_us": 3.3289999999999185,
+      "io_label_share": 0.9375
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 11686.211,
+      "kernel_blocked_us": 11681.188,
+      "abs_err_us": 3.9420000000003643,
+      "io_label_share": 1.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 23646.303,
+      "kernel_blocked_us": 23641.961499999998,
+      "abs_err_us": 4.780999999999455,
+      "io_label_share": 1.0
+    },
+    "slope_waits_per_delay": 1.0491002862179488
+  },
+  "direct_read/t1": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 640.5445,
+      "kernel_blocked_us": 650.5325,
+      "abs_err_us": 2.7739999999999707,
+      "io_label_share": 0.9305555555555556
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 11726.861,
+      "kernel_blocked_us": 11731.2725,
+      "abs_err_us": 4.360999999999931,
+      "io_label_share": 1.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 23697.940000000002,
+      "kernel_blocked_us": 23700.713000000003,
+      "abs_err_us": 5.366000000000865,
+      "io_label_share": 1.0
+    },
+    "slope_waits_per_delay": 1.0694425635149574
+  },
+  "direct_read/t4": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 829.1125000000001,
+      "kernel_blocked_us": 827.6585,
+      "abs_err_us": 3.9549999999999996,
+      "io_label_share": 1.0
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 11865.538,
+      "kernel_blocked_us": 11862.1725,
+      "abs_err_us": 5.309000000000124,
+      "io_label_share": 1.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 24028.563000000002,
+      "kernel_blocked_us": 24030.2275,
+      "abs_err_us": 5.5929999999996145,
+      "io_label_share": 1.0
+    },
+    "slope_waits_per_delay": 1.1107649301282052
+  },
+  "mixed/t1": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 516.6995000000001,
+      "kernel_blocked_us": 517.3435,
+      "abs_err_us": 2.098999999999985,
+      "io_label_share": 0.0
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 11765.049500000001,
+      "kernel_blocked_us": 11840.059999999998,
+      "abs_err_us": 5.553999999999,
+      "io_label_share": 0.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 23601.636,
+      "kernel_blocked_us": 23630.5435,
+      "abs_err_us": 5.429999999997207,
+      "io_label_share": 0.0
+    },
+    "slope_waits_per_delay": 1.0581181332264957
+  },
+  "mixed/t4": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 606.9639999999999,
+      "kernel_blocked_us": 618.327,
+      "abs_err_us": 3.82500000000005,
+      "io_label_share": 0.0
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 11608.3315,
+      "kernel_blocked_us": 11608.743999999999,
+      "abs_err_us": 5.429999999999773,
+      "io_label_share": 0.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 23349.326999999997,
+      "kernel_blocked_us": 23403.400999999998,
+      "abs_err_us": 15.263000000000634,
+      "io_label_share": 0.0
+    },
+    "slope_waits_per_delay": 1.0881912827991453
+  },
+  "mmap_cold/t1": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 9135.018,
+      "kernel_blocked_us": 9156.321,
+      "abs_err_us": 38.92799999999928,
+      "io_label_share": 0.9722222222222222
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 189182.843,
+      "kernel_blocked_us": 189126.8095,
+      "abs_err_us": 70.36899999999733,
+      "io_label_share": 1.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 381261.0495,
+      "kernel_blocked_us": 381203.13100000005,
+      "abs_err_us": 124.56999999998438,
+      "io_label_share": 1.0
+    },
+    "slope_waits_per_delay": 17.25635859556624
+  },
+  "mmap_cold/t4": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 8484.07,
+      "kernel_blocked_us": 8471.515500000001,
+      "abs_err_us": 36.94999999999996,
+      "io_label_share": 0.9861111111111112
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 190486.898,
+      "kernel_blocked_us": 190426.519,
+      "abs_err_us": 95.02000000000595,
+      "io_label_share": 1.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 382495.2265,
+      "kernel_blocked_us": 382461.766,
+      "abs_err_us": 89.55000000001564,
+      "io_label_share": 1.0
+    },
+    "slope_waits_per_delay": 17.384089533653846
+  },
+  "sleep/t1": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 0.0,
+      "kernel_blocked_us": 2206.1409999999996,
+      "abs_err_us": 8.029999999999921,
+      "io_label_share": 0.0
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 0.0,
+      "kernel_blocked_us": 2231.0209999999997,
+      "abs_err_us": 12.156999999999965,
+      "io_label_share": 0.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 0.0,
+      "kernel_blocked_us": 2199.3495,
+      "abs_err_us": 20.442999999999998,
+      "io_label_share": 0.0
+    },
+    "slope_waits_per_delay": 0.0
+  },
+  "sleep/t4": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 0.0,
+      "kernel_blocked_us": 2148.2970000000005,
+      "abs_err_us": 5.298999999999909,
+      "io_label_share": 0.0
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 0.0,
+      "kernel_blocked_us": 2218.5379999999996,
+      "abs_err_us": 7.179000000000023,
+      "io_label_share": 0.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 0.0,
+      "kernel_blocked_us": 2186.7039999999997,
+      "abs_err_us": 8.553000000000068,
+      "io_label_share": 0.0
+    },
+    "slope_waits_per_delay": 4.96207264957265e-07
+  },
+  "sync_write/t1": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 6601.778,
+      "kernel_blocked_us": 6598.2785,
+      "abs_err_us": 7.151000000000087,
+      "io_label_share": 1.0
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 28281.1065,
+      "kernel_blocked_us": 28275.448,
+      "abs_err_us": 11.946999999999889,
+      "io_label_share": 1.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 52313.431,
+      "kernel_blocked_us": 52307.5705,
+      "abs_err_us": 10.348000000002648,
+      "io_label_share": 1.0
+    },
+    "slope_waits_per_delay": 2.3610782779380344
+  },
+  "sync_write/t4": {
+    "0.0": {
+      "n": 144,
+      "trace_io_blocked_us": 10761.239000000001,
+      "kernel_blocked_us": 10752.957999999999,
+      "abs_err_us": 16.371999999999915,
+      "io_label_share": 1.0
+    },
+    "5.0": {
+      "n": 144,
+      "trace_io_blocked_us": 31532.163500000002,
+      "kernel_blocked_us": 31529.183,
+      "abs_err_us": 17.256999999999614,
+      "io_label_share": 1.0
+    },
+    "20.0": {
+      "n": 144,
+      "trace_io_blocked_us": 53818.9355,
+      "kernel_blocked_us": 53813.059,
+      "abs_err_us": 19.449999999998994,
+      "io_label_share": 1.0
+    },
+    "slope_waits_per_delay": 2.2299830086538464
+  }
+}

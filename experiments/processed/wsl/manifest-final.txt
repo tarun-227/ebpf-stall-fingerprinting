@@ -1,0 +1,13 @@
+matrix_id: final-wsl
+date: 2026-11-12T13:00:05Z
+kernel: 6.6.87.2-microsoft-standard-WSL2 (x86_64)
+distro: Ubuntu 24.04.3 LTS
+cpu: Intel(R) Core(TM) i7-1065G7 CPU @ 1.30GHz x 8
+ram: 7.7Gi
+virtualisation: wsl
+data_dir: /home/user/stalltest/mnt/data (/dev/mapper/stall_delay ext4)
+reps: 1 2 3 4 5; threads: 1 4 16; transfer_reps: 3 4 5
+ops_total: 48; cpu_ms: 10; sleep_us: 2000; hog_cpu: 1; devs: -d 254:0 -d 7:0
+delay_ms: 2; dm_table: 0 4194304 delay 7:0 0 2 7:0 0 2
+stallbench_sha256: 498252c2c5e35129405df3f5534000c71e08e18f8b4b73dbb9d335dcffe0555e
+stalltrace_sha256: 02263e368285281649b63125a47f1c1366babe9dbed44eeb1eeefed41f3c0e43

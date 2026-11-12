@@ -73,17 +73,15 @@ def table_confusion(ref, model="tree/fused"):
 
 def table_hypotheses(ref, design):
     rows = []
-    pairs = [("fused - syscall", "Fused $-$ syscall"), ("fused - block", "Fused $-$ block"),
-             ("fused - scheduler", "Fused $-$ scheduler"),
-             ("fused_noiowait - scheduler_noiowait", "Fused $-$ scheduler (no iowait)")]
+    pairs = [("fused - syscall", "vs.\\ syscall"), ("fused - block", "vs.\\ block"),
+             ("fused - scheduler", "vs.\\ scheduler"),
+             ("fused_noiowait - scheduler_noiowait", "vs.\\ sched., no iowait$^*$")]
     for key, name in pairs:
         cells = [name]
         for kind in ("rules", "tree"):
             h = ref["H1"][f"{kind}: {key}"]
             lo, hi = h["ci"]
-            cells.append(f"{signed(h['macro_f1_diff'])} [{signed(lo)}, {signed(hi)}]")
-        for kind in ("rules", "tree"):
-            cells.append(signed(design["H1"][f"{kind}: {key}"]["macro_f1_diff"]))
+            cells += [signed(h["macro_f1_diff"]), f"[{lo:.3f}, {hi:.3f}]"]
         rows.append(" & ".join(cells) + r" \\")
     return "\n".join(rows) + "\n"
 

@@ -68,9 +68,9 @@ We address the following problem: \emph{given an application operation with know
 %=====================================================================
 \textbf{Joint user/kernel I/O tracing.} EZIOTracer~\cite{naas2021eziotracer} links user-level I/O calls to VFS, page-cache, file-system and block events per thread, matching them with a shared monotonic clock. We reuse that idea for our operation markers. EZIOTracer has no scheduler evidence, so it cannot separate storage wait from CPU starvation, and it does not classify: a person reads the trace. Its finding that buffered writes produce almost no synchronous block events is one of our negative controls.
 
-\textbf{Syscall-level observability.} Rezvani et al.~\cite{rezvani2024ispass} show that eBPF syscall statistics can track request-level latency and throughput of latency-critical services without changing the application. They work with aggregate syscall statistics and do not attribute individual requests to a cause. Esteves et al.~\cite{esteves2023dio} capture syscalls with eBPF to diagnose applications' I/O behaviour; their evidence is also limited to the syscall layer. Our syscall-only baseline represents this family.
+\textbf{Syscall-level observability.} Rezvani et al.~\cite{rezvani2024ispass} show that eBPF syscall statistics can track request-level latency and throughput of latency-critical services without changing the application. They work with aggregate syscall statistics and do not attribute individual requests to a cause. DIO~\cite{esteves2023dio} intercepts 42 storage-related syscalls with eBPF, enriches them with kernel context such as file paths and offsets, and streams them to a search-and-dashboard backend, where a person diagnoses problems such as thread contention behind RocksDB tail latency. Its evidence is limited to the syscall layer, diagnosis is manual, and on RocksDB it costs a 1.37$\times$ slowdown and drops 3.5\% of events. Our syscall-only baseline represents this family.
 
-\textbf{Off-CPU analysis.} wPerf~\cite{zhou2018wperf} analyses off-CPU waiting events across threads to find the waits that bound throughput. It explains \emph{who waits for whom} at program level, whereas we label each operation and grade the label against ground truth. Off-CPU and block-latency tools in common use~\cite{gregg2019bpf} show each signal separately and leave the fusion to the user.
+\textbf{Off-CPU analysis.} wPerf~\cite{zhou2018wperf} records context switches, wakeups and interrupt handlers with kprobes (about 5\% overhead), models each I/O device as a pseudo-thread, and builds a wait-for graph to find the waiting events that bound a multi-threaded program's throughput. Its authors deliberately avoid syscall durations as a measure of I/O waiting because time inside a syscall may be data copying or contention; our syscall-only results confirm this. wPerf explains \emph{who waits for whom} across a whole program, whereas we label each operation and grade the label against ground truth. Off-CPU and block-latency tools in common use~\cite{gregg2019bpf} show each signal separately and leave the fusion to the user.
 
 \textbf{Tracer fidelity and cost.} Machado et al.~\cite{machado2025snowflakes} compare five eBPF libraries under storage workloads and find that event loss and overhead differ widely; libbpf captured the most events. We therefore use libbpf CO-RE~\cite{libbpf}, small fixed-size events and a ring buffer with in-kernel drop counters, and we report drops for every run.
 
@@ -88,8 +88,8 @@ We address the following problem: \emph{given an application operation with know
 \midrule
 EZIOTracer~\cite{naas2021eziotracer} & \checkmark & -- & \checkmark & -- & -- / -- \\
 Rezvani et al.~\cite{rezvani2024ispass} & \checkmark & -- & -- & -- & -- / \checkmark \\
-Esteves et al.~\cite{esteves2023dio} & \checkmark & -- & -- & -- & -- / -- \\
-wPerf~\cite{zhou2018wperf} & -- & \checkmark & -- & -- & -- / -- \\
+DIO~\cite{esteves2023dio} & \checkmark & -- & -- & -- & -- / -- \\
+wPerf~\cite{zhou2018wperf} & -- & \checkmark & IRQ & -- & -- / -- \\
 Machado et al.~\cite{machado2025snowflakes} & \multicolumn{3}{c}{tracer cost only} & -- & -- / -- \\
 \textbf{This work} & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark{} / \checkmark \\
 \bottomrule

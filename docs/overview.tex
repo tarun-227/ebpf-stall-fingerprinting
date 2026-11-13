@@ -1,0 +1,220 @@
+\documentclass[11pt]{article}
+\usepackage{guide}
+\guideheader{Overview}
+\begin{document}
+
+\guidetitle{Why Was That Slow?}{Project overview: eBPF fingerprinting of I/O-induced application stalls}{For everyone on the team. Read this first, then your own deep dive.}
+
+\section{The problem in plain words}
+
+A program does something simple, such as reading a file, and it takes far longer than it should. There are three quite different reasons this can happen:
+
+\begin{enumerate}
+\item \textbf{The disk was slow.} The program asked for data and had to sleep until the storage device answered.
+\item \textbf{The CPU was busy.} The program was ready to run, but other programs were using every processor, so it waited in a queue.
+\item \textbf{The work itself was heavy.} The program was running the whole time, in its own code or inside the operating system kernel.
+\end{enumerate}
+
+Each reason needs a different fix: a faster disk, fewer competing programs, or better code. So a useful tool must say \emph{which} reason applies.
+
+The usual tools look at one part of the kernel at a time, and each part alone can mislead:
+
+\begin{itemize}
+\item \textbf{System calls} (the program's requests to the kernel). A long \f{read()} call looks the same whether the program waited for the disk, waited for a CPU, or was just copying data.
+\item \textbf{The block layer} (where disk requests are handled). It shows the disk was busy, but perhaps for a \emph{different} program.
+\item \textbf{The scheduler} (which decides who runs). It shows the program was off the CPU, but not always why.
+\end{itemize}
+
+\begin{keyidea}[What we built]
+A tool that watches all three parts at once, works out where the time of each single operation went, and gives it one of four labels. If the evidence does not point clearly at one cause, it says so instead of guessing.
+\end{keyidea}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Label & Meaning \\
+\midrule
+\IOW & mostly blocked, waiting for storage \\
+\SCH & mostly ready to run, waiting for a CPU \\
+\CPUL & mostly running (own code or kernel work) \\
+\IND & no single cause takes more than 60\% of the time: ``not sure'' \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{What the assignment asks for}
+
+This is OS Assignment 3. It asks for a \emph{research} project, not just a program: build the tool, then measure honestly how often it is right. The required pieces are:
+
+\begin{itemize}
+\item at least four kinds of test workload, three levels of concurrency and repeated trials;
+\item baselines (tools that use only one kind of evidence) to compare against;
+\item two hypotheses to test, called H1 and H2 below;
+\item ablations (remove one part and see what breaks), overhead measurements, and a robustness check on a second setup;
+\item at least five peer-reviewed papers.
+\end{itemize}
+
+We hand in four things: a six-page IEEE-format report, a ZIP of its LaTeX source, a ZIP of the code, and a separate document explaining how to reproduce the results (\f{REPRODUCE.md}).
+
+\section{How the system works}
+
+\pipeline{}
+
+\begin{enumerate}
+\item \textbf{Workload.} A C program, \f{stallbench}, runs 12 kinds of operation that we designed so we know the right answer: reads straight from disk, reads from memory, busy loops, busy loops with competition, sleeps, and so on. It calls a tiny ``start'' and ``end'' function around every operation. These are the \emph{markers}.
+\item \textbf{Ground truth.} Around each operation the workload also asks the kernel for its own bookkeeping: how long this thread ran and how long it waited for a CPU. From that we compute the correct label. We also slow the disk by a known amount with a kernel feature called \f{dm-delay}, so disk waits are real and their length is known.
+\item \textbf{eBPF hooks.} eBPF lets us run small, safety-checked programs inside the Linux kernel. Ours fire on system calls, scheduler switches and wakeups, disk requests, page faults and the two markers, and record one small event each time.
+\item \textbf{Collector.} A program outside the kernel receives the events, writes them to a file and counts any events that were lost because it could not keep up.
+\item \textbf{Correlation.} A Python script replays each thread's events as a timeline (running, queued, blocked on disk, blocked on something else) and splits each operation's time between those states.
+\item \textbf{Classifier.} Two kinds: hand-written rules (``if more than 60\% of the time was disk wait, say \IOW'') and a small decision tree learned from data. Each has a version that may say \IND{} and a version that must always pick a cause.
+\item \textbf{Evaluation.} We compare the labels with the ground truth on runs the classifiers never saw during tuning.
+\end{enumerate}
+
+\section{What we found}
+
+All numbers are from the final experiment: 204 runs and 9{,}792 operations in WSL2 (Linux kernel 6.6), with 2\,ms of injected disk delay. Scores are on the 5{,}184 held-out test operations. The score is \emph{macro-F1}: 1.0 is perfect, and it treats all four labels as equally important.
+
+\subsection{Combining the evidence works}
+
+\begin{center}
+\begin{tabular}{@{}lcl@{}}
+\toprule
+Evidence used & Macro-F1 & In plain words \\
+\midrule
+\textbf{All three layers, rules} & \textbf{0.989} & almost always right (95\% interval 0.979--0.996) \\
+All three layers, decision tree & 0.986 & same level \\
+Scheduler only & 0.986 & just as good; see H1 \\
+Block layer only & 0.852 & blames the disk when another program used it \\
+System calls only & 0.647 & cannot tell disk wait from sleep or queueing \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{H2: saying ``not sure'' helps (clearly supported)}
+Forced to always pick a cause, the tool is confidently wrong on \textbf{18.0\%} of operations. Allowed to say \IND, which it does about 17\% of the time, confident errors drop to \textbf{0.7\%}.
+
+\begin{means}\textbf{What this means:} a diagnosis tool that admits doubt is far more trustworthy than one that always answers.\end{means}
+
+\subsection{H1: combining layers helps (supported, with a condition)}
+Combined evidence beats system-call-only and block-only evidence by a wide margin. It does \emph{not} beat the scheduler alone, because the kernel attaches a flag called \f{in\_iowait} to a sleeping thread that says ``this sleep is for the disk''. When we hide that flag, the scheduler alone drops to 0.879 and combining the layers wins it back: $+0.109$ for the rules and $+0.019$ for the tree, both statistically clear.
+
+\begin{means}\textbf{What this means:} combining layers matters exactly when the scheduler cannot see \emph{why} a thread is blocked. That is a sharper finding than a plain ``combining is better''.\end{means}
+
+\subsection{The measurements can be trusted}
+\begin{itemize}
+\item Our reconstructed time split agrees with the kernel's own bookkeeping to within about 1 percentage point (median, per workload).
+\item With 0, 5 and 20\,ms of injected delay, our measured disk-wait time per operation is within 125 microseconds of the kernel's.
+\item Only 0.54\% of events were lost, and removing every run with lost events or clock problems does not change the scores.
+\end{itemize}
+
+\subsection{The markers are worth having, but they cost time}
+Without markers the tool can only cut time into fixed slices. Accuracy then falls from 0.986 to between 0.81 and 0.90, depending on slice length. But each marker costs about 7--10 microseconds.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}Yll@{}}
+\toprule
+Kind of operation & Slowdown from tracing & Within 10\% budget? \\
+\midrule
+Takes milliseconds (sleep, synced write) & 1--4\% & yes \\
+Disk reads & 13--27\% (noisy) & no \\
+Takes microseconds (cached read, buffered write) & 61--92\% & no \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{means}\textbf{What this means:} the tool suits diagnosing stalls that last milliseconds, which are the ones worth diagnosing. It is not suited to always-on tracing of very fast operations.\end{means}
+
+\section{How this differs from earlier work}
+
+We read five peer-reviewed papers. None of them combines the three layers per operation, offers a ``not sure'' answer, \emph{and} checks its answers against known injected delays.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lY@{}}
+\toprule
+Paper & What it does, and what it lacks for our problem \\
+\midrule
+EZIOTracer (2021) & Links a program's I/O calls to file-system and disk events. No scheduler evidence and no automatic labels; a person reads the trace. \\
+Rezvani et al.\ (2024) & Estimates request latency from system-call statistics. System calls only; no cause per operation. \\
+DIO (2023) & Traces 42 storage system calls into dashboards. System calls only; diagnosis is manual. \\
+wPerf (2018) & Finds which waits limit a whole program's throughput. Works at program level, not per operation; no labels or ground truth. \\
+No Two Snowflakes (2025) & Compares eBPF libraries for speed and lost events. About the tracer itself; it is why we chose \f{libbpf}. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{What is in the repository}
+
+GitHub: \url{https://github.com/tarun-227/ebpf-stall-fingerprinting}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lY@{}}
+\toprule
+Path & What it is \\
+\midrule
+\f{src/workloads/stallbench.c} & The 12 test workloads and the ground truth \\
+\f{src/ebpf/} & The eBPF programs that run inside the kernel \\
+\f{src/collector/stalltrace.c} & Loads the eBPF programs and saves the events \\
+\f{src/correlation/breakdown.py} & Rebuilds timelines and splits each operation's time \\
+\f{src/classifier/} & Features, rules, decision tree, evaluation, delay and overhead analysis \\
+\f{src/report/make\_assets.py} & Turns results into the report's tables and plot data \\
+\f{scripts/} & Setup, the disk-delay helper, experiment runners, analysis \\
+\f{tests/} & Automated checks of the analysis code \\
+\f{experiments/configs/eval.json} & Evaluation settings, fixed before the final runs \\
+\f{experiments/processed/wsl/} & The final results behind every number in the report \\
+\f{report/} & The IEEE report (LaTeX source) \\
+\f{docs/} & These guides \\
+\f{README.md}, \f{REPRODUCE.md} & Quick start, and the full reproduction document \\
+\f{RESEARCH\_PLAN.md}, \f{TASK.md} & The research design, and the checklist with results \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The GitHub \emph{Releases} page also has the report PDF, both ZIPs and the raw trace data.
+
+\section{How to use it}
+
+\begin{enumerate}
+\item \textbf{Just read the results.} Open the report PDF from the release, or the file \f{results-ref.txt} in \f{experiments/processed/wsl/}.
+\item \textbf{Rebuild the report.} Upload \f{report/main.tex}, \f{report/refs.bib} and the folder \f{report/generated/} to Overleaf and compile.
+\item \textbf{Re-run the analysis.} Needs only Python 3, no special permissions. Download \f{raw-wsl.tar.gz} from the release and follow section 4 of \f{REPRODUCE.md}.
+\item \textbf{Run the tracer yourself.} Needs Linux and administrator rights:
+\begin{lstlisting}[language=bash]
+sudo scripts/setup_vm.sh       # install the tools
+make                           # build stallbench and stalltrace
+sudo scripts/smoke_test.sh     # quick end-to-end check
+\end{lstlisting}
+\end{enumerate}
+
+\section{What is left, and who reads what}
+
+Still to do: the robustness check on a second setup (an Ubuntu virtual machine), author names in the report, and the final submission.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}llY@{}}
+\toprule
+Deep dive & Reader & Covers \\
+\midrule
+Workloads and ground truth & Raihan & How we create operations with a known right answer, inject disk delay and design the experiments \\
+The eBPF tracer & Rohit & How we collect evidence inside the kernel, and what that costs \\
+From events to labels & Karthick & How events become time splits, labels and scores, and how H1 and H2 are tested \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Glossary}
+
+\begin{description}[leftmargin=2.6cm, style=nextline, itemsep=0.1em]
+\item[Ablation] Removing one part of the system to measure how much it contributed.
+\item[Baseline] A simpler method we compare against (here: one evidence source only).
+\item[Block layer] The part of the kernel that sends read and write requests to disks.
+\item[Confidence interval] The range in which the true score very likely lies; ours are 95\% intervals.
+\item[eBPF] A way to run small, safety-checked programs inside the Linux kernel.
+\item[Ground truth] The known correct answer that the tool is graded against.
+\item[Macro-F1] An accuracy score from 0 to 1 that weighs all four labels equally.
+\item[Marker] A tiny function the workload calls at the start and end of each operation.
+\item[Scheduler] The part of the kernel that decides which thread runs on which CPU.
+\item[System call] A request from a program to the kernel, such as \f{read()} or \f{write()}.
+\item[WSL] Windows Subsystem for Linux: a real Linux kernel running inside Windows.
+\end{description}
+
+\end{document}

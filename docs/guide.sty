@@ -1,0 +1,95 @@
+% Shared style for the team study guides (overview + deep dives).
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{guide}
+\RequirePackage[T1]{fontenc}
+\RequirePackage[a4paper,margin=2.2cm]{geometry}
+\RequirePackage{mathpazo}              % Palatino text; Courier for code (both in base TeX Live)
+\renewcommand{\ttdefault}{pcr}
+\RequirePackage{microtype}
+\RequirePackage{amsmath,amssymb}
+\RequirePackage{booktabs,tabularx,array}
+\RequirePackage{xcolor}
+\RequirePackage{enumitem}
+\RequirePackage{titlesec}
+\RequirePackage{fancyhdr}
+\RequirePackage{listings}
+\RequirePackage[most]{tcolorbox}
+\RequirePackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+\RequirePackage[hidelinks]{hyperref}
+
+\definecolor{accent}{HTML}{1F4E79}
+\definecolor{soft}{HTML}{EEF3F8}
+\definecolor{codebg}{HTML}{F6F6F6}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\setlist{itemsep=0.15em, topsep=0.25em, leftmargin=1.4em}
+\renewcommand{\arraystretch}{1.2}
+\emergencystretch=2em
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\titleformat{\section}{\Large\bfseries\color{accent}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.4em}
+\titlespacing*{\subsection}{0pt}{1em}{0.2em}
+
+\newcommand{\guidetitle}[3]{% title, subtitle, reader line
+  \begin{center}
+  {\huge\bfseries\color{accent} #1\par}\vspace{0.4em}
+  {\Large #2\par}\vspace{0.5em}
+  {\normalsize\itshape #3\par}
+  \end{center}\vspace{0.3em}\hrule\vspace{0.8em}}
+
+\newcommand{\guideheader}[1]{%
+  \pagestyle{fancy}\fancyhf{}
+  \fancyhead[L]{\small\color{gray} eBPF stall fingerprinting}
+  \fancyhead[R]{\small\color{gray} #1}
+  \fancyfoot[C]{\small\thepage}
+  \renewcommand{\headrulewidth}{0.3pt}}
+
+% Boxes
+\newtcolorbox{keyidea}[1][Key idea]{colback=soft, colframe=accent, boxrule=0.5pt, arc=2pt,
+  left=6pt, right=6pt, top=4pt, bottom=4pt, fonttitle=\bfseries, title={#1}}
+\newtcolorbox{means}{colback=white, colframe=gray!60, boxrule=0.4pt, arc=2pt,
+  left=6pt, right=6pt, top=3pt, bottom=3pt, fontupper=\small}
+
+% Code
+\lstdefinestyle{guide}{basicstyle=\ttfamily\footnotesize, backgroundcolor=\color{codebg},
+  frame=single, rulecolor=\color{gray!40}, breaklines=true, columns=fullflexible,
+  keepspaces=true, showstringspaces=false, tabsize=4, xleftmargin=2pt, xrightmargin=2pt,
+  aboveskip=0.6em, belowskip=0.4em, keywordstyle=\color{accent}\bfseries,
+  commentstyle=\color{gray!70!black}\itshape, upquote=true}
+\lstset{style=guide}
+\newcommand{\src}[1]{{\small\color{gray!60!black}\texttt{#1}}}
+\DisableLigatures{encoding = *, family = tt*}   % keep "--option" as two hyphens
+\newcommand{\f}[1]{\texttt{#1}}
+
+% Labels
+\newcommand{\IOW}{\textsc{io\_wait}}
+\newcommand{\SCH}{\textsc{sched\_wait}}
+\newcommand{\CPUL}{\textsc{syscall\_cpu}}
+\newcommand{\IND}{\textsc{indeterminate}}
+
+% Pipeline diagram; argument = node name to highlight (wl, k, c, corr, cls, ev, gt) or none
+\newcommand{\pipeline}[1]{%
+\begin{center}
+\begin{tikzpicture}[font=\small, node distance=6mm and 7mm,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=17mm, inner sep=3pt, text width=38mm},
+  arr/.style={-{Latex[length=2mm]}}]
+\node[box] (wl) {Workload\\(\texttt{stallbench})\\marks each operation};
+\node[box, right=of wl] (k) {eBPF hooks: syscalls,\\scheduler, block,\\faults, markers};
+\node[box, right=of k] (c) {Collector\\ring buffer $\rightarrow$ file,\\counts dropped events};
+\node[box, below=of wl, fill=gray!12] (gt) {Ground truth\\(kernel's own\\accounting)};
+\node[box, below=of c] (corr) {Correlation\\per-thread timeline,\\time split per operation};
+\node[box, below=of k] (cls) {Classifier\\rules / decision tree\\(may say ``not sure'')};
+\node[box, below=of cls, minimum height=11mm] (ev) {Evaluation\\macro-F1, CIs, H1, H2};
+\draw[arr] (wl) -- (k); \draw[arr] (k) -- (c); \draw[arr] (c) -- (corr);
+\draw[arr] (corr) -- (cls); \draw[arr] (cls) -- (ev);
+\draw[arr] (wl) -- (gt); \draw[arr] (gt) |- (ev);
+\if\relax\detokenize{#1}\relax\else
+  \foreach \n in {#1} {\draw[accent, line width=1.6pt, rounded corners=2pt]
+    (\n.south west) rectangle (\n.north east);}
+\fi
+\end{tikzpicture}
+\end{center}}

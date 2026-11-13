@@ -129,7 +129,8 @@ python3 src/classifier/features.py raw/final-wsl --out /tmp/f.csv               
 python3 src/classifier/evaluate.py /tmp/f.csv --config experiments/configs/eval.json --out /tmp/res
 python3 src/classifier/evaluate.py /tmp/f.csv --config experiments/configs/eval.json --out /tmp/res-d --truth expected
 python3 src/classifier/features.py raw/final-wsl --out /tmp/w20.csv --window-ms 20  # PID-only windows
-python3 src/correlation/breakdown.py raw/final-wsl/<run_id>                        # per-op time split of one run
+R=raw/final-wsl/direct_read-t4-io64k-seq-d2ms-r3
+python3 src/correlation/breakdown.py $R $R/gt.jsonl --summary                      # time split of one run
 ```
 
 ---
@@ -192,7 +193,7 @@ The third `REPS` value doubles as the test split, so set `test_reps` in a copy o
 ./build/stallbench --prepare --file /mnt/stall/data/f.bin --size $((256<<20))
 sudo ./build/stalltrace -o /tmp/run1 -- ./build/stallbench --workload direct_read \
      --file /mnt/stall/data/f.bin --run-id run1 --out /tmp/run1.gt.jsonl --threads 4 --ops 50
-python3 src/correlation/breakdown.py /tmp/run1          # per-operation time split
+python3 src/correlation/breakdown.py /tmp/run1 /tmp/run1.gt.jsonl --summary   # time split
 ```
 
 `stalltrace -h` and `stallbench --help` list all options. These include `-b` for the ring-buffer size, `-S/-C/-K/-F/-M` to disable event families, `-J` for JSON output, and `--no-ref` to skip ground-truth readings during overhead runs.

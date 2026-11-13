@@ -19,3 +19,10 @@ report/main.pdf
 
 # Packaged deliverables (published as release assets)
 deliverables/
+
+# Guide build output (PDFs are kept)
+docs/*.aux
+docs/*.log
+docs/*.out
+docs/*.fls
+docs/*.fdb_latexmk

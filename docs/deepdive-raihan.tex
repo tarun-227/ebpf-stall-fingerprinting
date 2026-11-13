@@ -1,0 +1,286 @@
+\documentclass[11pt]{article}
+\usepackage{guide}
+\guideheader{Deep dive 1: workloads and ground truth}
+\begin{document}
+
+\guidetitle{Knowing the Right Answer}{Deep dive 1: workloads, ground truth and experiment design}{For Raihan. Read the overview first.}
+
+\section{Your segment in one page}
+
+\pipeline{wl,gt}
+
+A tool that says ``this was slow because of the disk'' is only worth something if we can check it. Your segment is the part that makes checking possible. It answers two questions:
+
+\begin{enumerate}
+\item \textbf{How do we create operations whose cause of slowness we already know?} By writing test programs (workloads) that are slow for one deliberate reason each.
+\item \textbf{How do we know the correct label for each operation?} By asking the kernel for its own bookkeeping around every operation, and by slowing the disk by an amount we choose.
+\end{enumerate}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lY@{}}
+\toprule
+Goes in & A workload name, a thread count, a test file on the delayed disk \\
+Comes out & \f{gt.jsonl}: one line per operation with its start and end time, the kernel's accounting, and the correct label \\
+Main code & \f{src/workloads/stallbench.c} (about 1{,}100 lines of C) \\
+Helper scripts & \f{scripts/dm\_delay.sh}, \f{run\_matrix.sh}, \f{run\_delay\_sweep.sh}, \f{run\_final\_wsl.sh} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Everything the other two segments produce is graded against your output. If the ground truth is wrong, every score in the report is wrong.
+
+\section{Concepts you need}
+
+\subsection{The page cache, and why ``reading a file'' has two speeds}
+Linux keeps recently used file data in memory, in the \emph{page cache}. A read of cached data is a memory copy and takes microseconds. A read of uncached data must go to the disk and takes much longer. So the same \f{read()} call can be CPU work or disk wait. We use this on purpose:
+
+\begin{itemize}
+\item \f{warm\_read}: the data is cached first, so the read is pure CPU work.
+\item \f{cold\_read}: we tell the kernel to forget the data first (\f{posix\_fadvise} with \f{DONTNEED}), so the read must wait for the disk.
+\item \f{direct\_read}: the file is opened with \f{O\_DIRECT}, which skips the cache completely. Every read goes to the disk.
+\end{itemize}
+
+\subsection{Buffered and synced writes}
+A normal \f{write()} only copies data into the page cache and returns; the kernel writes it to disk later. That is \f{buffered\_write}: CPU work, even though disk activity follows afterwards. Adding \f{fdatasync()} forces the data to disk before returning. That is \f{sync\_write}: disk wait.
+
+\subsection{Memory-mapped files and page faults}
+With \f{mmap} a file appears as ordinary memory. Touching a page that is not in memory causes a \emph{page fault}: the kernel pauses the thread and loads the page from disk. There is no system call at all, yet the thread waits for the disk. \f{mmap\_cold} and \f{mmap\_warm} test this; they are our extension beyond the required workloads.
+
+\subsection{CPU contention}
+If more threads want to run than there are CPUs, some wait in the \emph{run queue}. To create this on purpose, \f{cpu\_contended} pins the worker and three ``hog'' processes to the same CPU. The worker then gets about a quarter of that CPU and waits the rest of the time.
+
+\subsection{The kernel's own accounting}
+For every thread the kernel keeps two counters we rely on:
+\begin{itemize}
+\item \textbf{CPU time}: how long the thread actually ran. We read it with \f{clock\_gettime} and the clock named \f{CLOCK\_THREAD\_CPUTIME\_ID}.
+\item \textbf{Run-queue delay}: how long the thread was ready but waiting for a CPU, the second number in \f{/proc/thread-self/schedstat}.
+\end{itemize}
+Whatever is left of the wall-clock time is \textbf{blocked time}: the thread was asleep, waiting for something.
+
+\subsection{The 60\% rule}
+We fixed this rule before running any experiment:
+
+\begin{keyidea}[Dominance rule]
+A cause \emph{dominates} an operation if it takes more than 60\% of its wall-clock time. If CPU time dominates, the label is \CPUL. If run-queue delay dominates, it is \SCH. If blocked time dominates \emph{and} the operation does I/O, it is \IOW. Otherwise it is \IND.
+\end{keyidea}
+
+\subsection{dm-delay: slowing the disk by a known amount}
+\f{dm-delay} is a Linux ``device mapper'' target. It sits in front of a real disk and holds every request for a set number of milliseconds before passing it on. We use it for two reasons. First, WSL's virtual disk is cached by Windows, so ``cold'' reads were often served from memory; the delay makes disk waits real. Second, we then know how long a disk wait should be, so we can check the tool's time measurements, not only its labels.
+
+\section{Code walkthrough}
+
+\subsection{The markers}
+\src{src/workloads/stallbench.c, lines 39--58}
+\begin{lstlisting}[language=C]
+#define MARKER __attribute__((noipa, used, visibility("default")))
+
+MARKER void op_begin(uint64_t op_id)
+{
+	__asm__ volatile("nop" : : "r"(op_id) : "memory");
+}
+
+MARKER void op_end(uint64_t op_id)
+{
+	__asm__ volatile("nop\n\tnop" : : "r"(op_id) : "memory");
+}
+\end{lstlisting}
+These two functions do nothing. They exist so the tracer can attach a probe to them and learn exactly when each operation starts and ends. The attributes stop the compiler from removing or inlining them. The bodies differ by one \f{nop} so the compiler cannot merge the two functions into one address.
+
+\subsection{The 12 workloads}
+\src{do\_op(), lines 647--709 (shortened)}
+\begin{lstlisting}[language=C]
+case WL_DIRECT_READ: case WL_COLD_READ: case WL_WARM_READ:
+	n = pread(fd, buf, cfg.io_size, off);          /* same call, three causes */
+	return n < 0 ? -errno : n;
+case WL_SYNC_WRITE:
+	n = pwrite(fd, buf, cfg.io_size, off);
+	if (fdatasync(fd) != 0) return -errno;         /* force it to disk */
+	return n;
+case WL_CPU: case WL_CPU_CONTENDED: case WL_NEIGHBOR_IO:
+	w->sink += spin(cpu_iters);                    /* busy loop */
+	return 0;
+case WL_MIXED: {
+	uint64_t t0 = now_ns(), d, t1;
+	n = pread(fd, buf, cfg.io_size, off);          /* a real disk read ... */
+	t1 = now_ns();  d = t1 - t0;
+	while (now_ns() - t1 < d)                      /* ... then spin as long */
+		w->sink += spin(256);
+	return n;
+}
+\end{lstlisting}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}llY@{}}
+\toprule
+Workload & Designed label & What it tests \\
+\midrule
+\f{direct\_read}, \f{cold\_read} & \IOW & reading from the disk \\
+\f{sync\_write} & \IOW & writing and waiting for the disk \\
+\f{mmap\_cold} & \IOW & disk wait with no system call \\
+\f{warm\_read}, \f{mmap\_warm} & \CPUL & file access served from memory \\
+\f{buffered\_write} & \CPUL & \emph{negative control}: disk activity follows later but is not the cause \\
+\f{cpu} & \CPUL & plain CPU work (10\,ms loop) \\
+\f{neighbor\_io} & \CPUL & \emph{negative control}: another process hammers the disk meanwhile \\
+\f{cpu\_contended} & \SCH & CPU work with three competitors on one CPU \\
+\f{sleep} & \IND & blocked, but not for I/O (2\,ms sleep) \\
+\f{mixed} & \IND & half disk wait, half CPU: no cause dominates \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The negative controls matter most for the research question. They are the cases where a tool that looks only at disk activity gets fooled.
+
+\subsection{Taking one consistent reading}
+\src{read\_ref(), lines 491--506}
+\begin{lstlisting}[language=C]
+for (int tries = 0; tries < 8; tries++) {
+	int64_t before = read_run_delay(ss_fd);        /* from schedstat */
+
+	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);   /* CPU time */
+	s->cpu  = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+	s->wall = now_ns();                            /* wall clock */
+	s->runq = before;
+	if (before < 0 || read_run_delay(ss_fd) == before)
+		return;                                    /* nothing changed: good */
+}
+s->runq = -1;       /* never stable: mark this reading unknown */
+\end{lstlisting}
+A reading has three numbers that must belong to the same instant. If the thread is paused by the scheduler between reading them, they no longer match. The trick: run-queue delay only changes when the thread has been waiting, so we read it before and after. If it changed, we were interrupted and try again.
+
+\subsection{One measured operation}
+\src{worker\_main(), lines 768--790 (shortened)}
+\begin{lstlisting}[language=C]
+before_op(fd, off);            /* set up cache state, outside the window */
+read_ref(ss_fd, &s0);          /* kernel accounting before */
+op_begin(r->op_id);            /* marker: tracer sees the start */
+r->t_begin = now_ns();
+r->bytes   = do_op(w, fd, buf, off);
+r->t_end   = now_ns();
+op_end(r->op_id);              /* marker: tracer sees the end */
+read_ref(ss_fd, &s1);          /* kernel accounting after */
+
+r->ref_wall_ns = s1.wall - s0.wall;
+r->ref_cpu_ns  = s1.cpu  - s0.cpu;
+r->ref_runq_ns = s1.runq - s0.runq;
+\end{lstlisting}
+The two readings sit just outside the markers. Their difference is what the kernel says happened during the operation.
+
+\subsection{From accounting to label}
+\src{ref\_label(), lines 576--590}
+\begin{lstlisting}[language=C]
+blocked = wall - ref_cpu_wall(r) - ref_runq_wall(r);
+if (ref_cpu_wall(r)  / wall > DOMINANCE) return "SYSCALL_CPU_DOMINATED";
+if (ref_runq_wall(r) / wall > DOMINANCE) return "SCHEDULER_WAIT_DOMINATED";
+if (blocked / wall > DOMINANCE)
+	return op_does_io() ? "IO_WAIT_DOMINATED" : "INDETERMINATE";
+return "INDETERMINATE";
+\end{lstlisting}
+This is the 60\% rule in code (\f{DOMINANCE} is 0.6). The result is the \textbf{reference label}, our main ground truth. Each operation also carries a \textbf{design label}, which is simply what the workload was built to produce (the table above). We report scores against both.
+
+\subsection{The experiment scripts}
+\begin{itemize}
+\item \f{scripts/dm\_delay.sh} creates the delayed disk. In WSL there is no spare disk, so \f{create-loop} makes a 2\,GB file, turns it into a loop device and puts \f{dm-delay} on top. \f{set N} changes the delay without remounting.
+\item \f{scripts/run\_matrix.sh} runs the full matrix: every workload at 1, 4 and 16 threads, 5 repetitions each, under the tracer. Each run gets its own folder, named for example
+
+\f{direct\_read-t4-io64k-seq-d2ms-r3} (workload, threads, I/O size, pattern, delay, repetition). Existing results are never overwritten.
+\item \f{scripts/run\_delay\_sweep.sh} repeats the I/O workloads at 0, 5 and 20\,ms of delay.
+\item \f{scripts/run\_final\_wsl.sh} does all of it in one command, with one password prompt.
+\end{itemize}
+
+\section{The paper behind it: EZIOTracer (CHEOPS 2021)}
+
+\textbf{What it does.} EZIOTracer joins two tracers: EZTrace, which records a program's I/O function calls in user space, and IOTracer, an eBPF tracer for the kernel's I/O path (file system, page cache, block layer). It merges both into one trace by matching the thread identifier and timestamps taken from the same clock. Its authors report an overhead of 2\% to 26\%.
+
+\textbf{What we took from it.}
+\begin{itemize}
+\item \emph{Linking user-level and kernel events by thread and a shared clock.} Our markers and the tracer's timestamps use the same monotonic clock, and events are matched by thread.
+\item \emph{A negative control.} The paper observes that buffered writes cause almost no block-layer events at the time of the write, because the page cache absorbs them. That is our \f{buffered\_write} workload.
+\end{itemize}
+
+\textbf{Where we differ.} EZIOTracer has no scheduler information, so it cannot tell a disk wait from CPU starvation. It produces a trace for a person to read, not a label. And it has no ground truth: bottlenecks are judged by inspection. Your segment is precisely what it lacks.
+
+\section{Problems we hit and how we fixed them}
+
+\begin{itemize}
+\item \textbf{A reading interrupted halfway.} With competing threads, the scheduler sometimes paused the worker in the middle of a reading. This produced up to 26\,ms of ``blocked'' time that never happened. Fix: the retry loop in \f{read\_ref()}.
+\item \textbf{The kernel's clock runs at the wrong speed in WSL.} The clock behind CPU time and run-queue delay ran between 0.92 and 1.09 times real time, and the error changed over minutes. Shares added up to 109\%. Fix: each run measures the ratio at its start and end (\f{measure\_ratio\_once()}), rescales the kernel's numbers, and sets \f{clock\_drift\_flag} if the two measurements disagree. 26 of 204 final runs were flagged; removing them does not change the results.
+\item \textbf{The \f{mixed} workload was not mixed.} We first sized its CPU part from a separate calibration, which was off by a factor of two. Fix: it now spins for exactly as long as its own read took.
+\item \textbf{A sleeping thread is blocked, but not on I/O.} The first rule called every dominant block ``I/O''. Fix: \f{op\_does\_io()} decides whether blocked time may count as I/O.
+\item \textbf{Windows caches WSL's disk.} In the pilot, only about half of single-thread \f{cold\_read} operations really waited for the disk. Fix: all final runs use the \f{dm-delay} mount with 2\,ms delay.
+\item \textbf{The design label is wrong for overloaded CPU loops.} With 16 threads on 8 CPUs each thread waits about half the time, so the truth depends on the machine. This is why the reference label, not the design label, is the main ground truth.
+\end{itemize}
+
+\section{Results that come from this segment}
+
+\textbf{The final dataset:} 204 runs, all completed, 9{,}792 operations.
+
+\begin{center}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Reference label & Operations & Share \\
+\midrule
+\IOW & 4{,}027 & 41\% \\
+\CPUL & 3{,}440 & 35\% \\
+\IND & 1{,}506 & 15\% \\
+\SCH & 819 & 8\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Design and reference labels agree on 94.9\% of operations.} The disagreements are mostly the overloaded CPU loops described above.
+
+\textbf{The injected delay shows up as expected.} Blocked time per operation, one thread:
+
+\begin{center}
+\begin{tabular}{@{}lrrrl@{}}
+\toprule
+Workload & 0\,ms & 5\,ms & 20\,ms & Disk waits per operation \\
+\midrule
+\f{direct\_read} & 0.65\,ms & 11.7\,ms & 23.7\,ms & about 1.1 \\
+\f{cold\_read} & 0.70\,ms & 11.7\,ms & 23.6\,ms & about 1.1 \\
+\f{sync\_write} & -- & -- & -- & about 2.4 (data, then journal) \\
+\f{mmap\_cold} & 9.2\,ms & 189\,ms & 381\,ms & about 17 (one per read-ahead chunk) \\
+\f{sleep} & -- & -- & -- & 0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Note the surprise in the table: a nominal 5\,ms delay became about 11\,ms and 20\,ms became about 23\,ms. \f{dm-delay} rounds delays up in this environment. We therefore use the measured blocked time, not the nominal number.
+
+\section{Try it yourself}
+
+These need no administrator rights. Run them in the project folder on Linux or WSL.
+
+\begin{lstlisting}[language=bash]
+make workload
+./build/stallbench --prepare --file /tmp/demo.bin --size $((16<<20))
+./build/stallbench --workload sleep --run-id demo-sleep --out /tmp/sleep.jsonl --ops 5
+./build/stallbench --workload cpu --run-id demo-cpu --out /tmp/cpu.jsonl --ops 5 --cpu-ms 10
+./build/stallbench --workload warm_read --file /tmp/demo.bin \
+    --run-id demo-warm --out /tmp/warm.jsonl --ops 5
+\end{lstlisting}
+
+Then look at one operation (the second line of each file):
+
+\begin{lstlisting}[language=bash]
+sed -n 2p /tmp/sleep.jsonl
+\end{lstlisting}
+
+What to expect:
+\begin{itemize}
+\item \f{sleep}: \f{ref\_wall\_ns} about 2.3 million (2.3\,ms), \f{ref\_cpu\_ns} under 100 thousand, label \f{INDETERMINATE}.
+\item \f{cpu}: \f{ref\_cpu\_ns} almost equal to \f{ref\_wall\_ns}, label \f{SYSCALL\_CPU\_DOMINATED}.
+\item \f{warm\_read}: only about 10--30 microseconds per operation, label \f{SYSCALL\_CPU\_DOMINATED}.
+\end{itemize}
+The first line of each file is the run header. Look for \f{clock\_ratio} there: on WSL it is usually not exactly 1.
+
+\section{Limits and open questions}
+
+\begin{itemize}
+\item \textbf{All workloads are synthetic.} Each does one thing. Real programs mix causes within one operation, which would produce more \IND{} labels.
+\item \textbf{The reference label comes from scheduler accounting.} A classifier that uses scheduler events agrees with it partly by construction. That is why we also report scores against the design label.
+\item \textbf{Only synchronous I/O.} With asynchronous I/O (\f{io\_uring}), the thread that waits is not the one that submitted the request. We do not cover that.
+\item \textbf{One environment so far.} Everything ran in WSL. The robustness check on a virtual machine with a real second disk is still to do; \f{dm\_delay.sh create} (without \f{-loop}) is ready for it.
+\end{itemize}
+
+\end{document}

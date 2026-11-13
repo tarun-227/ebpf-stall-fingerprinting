@@ -11,6 +11,17 @@ OS course, Assignment 3. When an application operation is slow, this tool tells 
 
 It traces each operation with eBPF at three kernel layers (syscalls, scheduler, block I/O), splits the operation's wall time into causes, labels it, and is graded against the kernel's own per-thread accounting on workloads with **injected disk delay** (`dm-delay`).
 
+## New to the project? Start here
+
+Four study guides in plain language, in [`docs/`](docs/):
+
+| Guide | For | Covers |
+|---|---|---|
+| [Overview](docs/overview.pdf) (6 pages) | Everyone | The problem, what we built, the results, the repository |
+| [Deep dive 1: workloads and ground truth](docs/deepdive-raihan.pdf) | Raihan | Test workloads, the kernel's accounting, `dm-delay`, experiment design, EZIOTracer |
+| [Deep dive 2: the eBPF tracer](docs/deepdive-rohit.pdf) | Rohit | eBPF programs, the collector, lost events, overhead, the eBPF-libraries paper |
+| [Deep dive 3: from events to labels](docs/deepdive-karthick.pdf) | Karthick | Timelines, classifiers, scoring, H1 and H2, wPerf, DIO, the ISPASS paper |
+
 ## Main results (WSL2, kernel 6.6, 5,184 held-out operations)
 
 | | Macro-F1 [95% CI] |

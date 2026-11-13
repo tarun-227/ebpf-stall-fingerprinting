@@ -1,0 +1,303 @@
+\documentclass[11pt]{article}
+\usepackage{guide}
+\guideheader{Deep dive 3: from events to labels}
+\begin{document}
+
+\guidetitle{From Events to Answers}{Deep dive 3: correlation, classification and evaluation}{For Karthick. Read the overview first.}
+
+\section{Your segment in one page}
+
+\pipeline{corr,cls,ev}
+
+The tracer hands over a long list of raw events: ``thread 1592 left the CPU at this nanosecond'', ``a disk request finished''. Your segment turns that list into an answer and then into a grade. It has three steps:
+
+\begin{enumerate}
+\item \textbf{Correlation.} Replay each thread's events into a timeline of states, and work out how much of each operation was spent in each state.
+\item \textbf{Classification.} Turn that time split into one of the four labels, using hand-written rules or a decision tree.
+\item \textbf{Evaluation.} Compare the labels with the ground truth, put confidence intervals on the scores, and test the two hypotheses.
+\end{enumerate}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lY@{}}
+\toprule
+Goes in & The tracer's events and the workload's ground-truth file, for each run \\
+Comes out & \f{features.csv} (one row per operation), \f{results.json} and a readable \f{results-*.txt} \\
+Correlation & \f{src/correlation/breakdown.py} \\
+Classification & \f{src/classifier/features.py}, \f{models.py} \\
+Evaluation & \f{src/classifier/evaluate.py}, \f{delay\_analysis.py}, settings in \f{experiments/configs/eval.json} \\
+Tests & \f{tests/test\_breakdown.py}, \f{tests/test\_classifier.py} (29 tests) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Everything here is plain Python with no extra libraries, so anyone can rerun it.
+
+\section{Concepts you need}
+
+\subsection{A thread is always in exactly one state}
+At any instant a thread is doing one of these:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}llY@{}}
+\toprule
+State & Meaning & Counts towards \\
+\midrule
+run & on a CPU, executing & \CPUL \\
+runqueue & ready, waiting for a CPU & \SCH \\
+blocked-I/O & asleep, waiting for the disk & \IOW \\
+blocked-other & asleep for another reason (timer, lock) & nothing: leads to \IND \\
+wake latency & just woken onto an idle CPU & \CPUL{} (see section 5) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+If we know the state at every instant, we can take any operation's start and end and add up the time in each state. That time split is the heart of the method.
+
+\subsection{Features}
+A \emph{feature} is one number describing an operation. Ours are mostly fractions of the operation's wall time: \f{run\_f}, \f{runq\_f}, \f{blocked\_io\_f}, \f{blocked\_other\_f}, \f{wake\_f}, plus the fraction spent inside system calls (\f{syscall\_f}), kilobytes the thread sent to the disk (\f{bio\_kb}), whether the disk completed any request meanwhile (\f{blk\_any}), page faults and the wall time itself.
+
+\subsection{Rules and a decision tree}
+\textbf{Rules} are written by us from the definition of the labels: ``if \f{runq\_f} is above 0.6, say \SCH''. They are easy to explain and need almost no data.
+
+A \textbf{decision tree} learns such if-then questions from labelled examples. At each step it picks the feature and threshold that best separate the labels. We limit it to four questions deep so it stays readable.
+
+\subsection{Abstention}
+To \emph{abstain} is to answer \IND. Each classifier comes in two versions: one that may abstain and a \emph{forced} one that must always name a cause. Comparing them is hypothesis H2.
+
+\subsection{Scores}
+\begin{itemize}
+\item \textbf{Precision} for a label: of the operations we gave that label, how many deserved it. \textbf{Recall}: of the operations that deserved it, how many we found. \textbf{F1} combines the two.
+\item \textbf{Macro-F1} is the plain average of F1 over the four labels. A rare label (\SCH{} is only 8\% of operations) counts as much as a common one, so a classifier cannot score well by ignoring it.
+\item \textbf{High-confidence error rate}: the share of operations given a \emph{wrong cause}. Answering \IND{} is never a high-confidence error. This is the number H2 is about.
+\end{itemize}
+
+\subsection{Honest testing}
+\begin{itemize}
+\item \textbf{Split by run, not by operation.} Operations in the same run are very alike. If some were used for tuning and others for testing, the score would be inflated. So whole repetitions are kept apart: repetitions 1--2 for tuning and training, 3--5 for testing only.
+\item \textbf{Freeze the settings first.} \f{eval.json} was committed before the final runs. Nothing was tuned after seeing test results.
+\item \textbf{Bootstrap confidence intervals.} One score is not enough; we need to know how much it could change with different data. We resample the test \emph{runs} with replacement 1{,}000 times, recompute the score each time, and report the range holding the middle 95\%.
+\end{itemize}
+
+\section{Code walkthrough}
+
+\subsection{From switch events to states}
+\src{src/correlation/breakdown.py, per\_thread\_timeline(), lines 129--139}
+\begin{lstlisting}[language=Python]
+if t == "sched_switch":
+    if e["tid"] in tids:                     # our thread is leaving the CPU
+        if e["preempt"] or e["prev_state"] == 0:
+            state = RUNQ                     # still wants to run
+        elif not e["iowait_known"]:
+            state = BLK_OTHER                # cannot tell; flagged
+        else:
+            state = BLK_IO if e["iowait"] else BLK_OTHER
+        tl[e["tid"]].append((ts, 1, "out", (state, e["iowait_known"])))
+    if e["next_tid"] in tids:                # our thread is coming back
+        tl[e["next_tid"]].append((ts, 2, "in", bool(e.get("prev_idle", 0))))
+\end{lstlisting}
+This is where the meaning of a switch is decided. A thread that was preempted, or left while still runnable, is in the run queue. A thread that went to sleep is blocked, and the kernel's \f{in\_iowait} flag says whether that is for the disk.
+
+\subsection{Building the timeline and measuring a window}
+\src{StateTimeline, lines 161--212 (measure() shown)}
+\begin{lstlisting}[language=Python]
+def measure(self, a, b):
+    """Time in each state within [a, b], plus time the timeline does not cover."""
+    out = {s: 0 for s in STATES}
+    i = max(bisect.bisect_right(self.starts, a) - 1, 0)
+    covered = 0
+    while i < len(self.intervals):
+        s, e, label = self.intervals[i]
+        if s >= b:
+            break
+        overlap = min(e, b) - max(s, a)
+        if overlap > 0:
+            out[label] += overlap
+            covered += overlap
+        i += 1
+    out["uncovered"] = (b - a) - covered
+    return out
+\end{lstlisting}
+The class first turns the event list into non-overlapping intervals \f{(start, end, state)}. \f{measure(a, b)} then adds up how much of each state falls between two times. Called with an operation's marker times, it gives that operation's time split. \f{uncovered} is time we have no events for; it should be zero, and a non-zero value warns of missing events.
+
+\f{breakdown()} does this for every operation and also counts what else happened inside the window: system calls and their duration, the thread's own disk requests, disk completions by anyone, and page faults. There is a second mode, \f{window\_breakdown()}, that ignores the markers and cuts time into fixed slices; it is the ``no markers'' ablation.
+
+\subsection{The fused rules}
+\src{src/classifier/models.py, rule\_fused(), lines 53--66}
+\begin{lstlisting}[language=Python]
+def rule_fused(r, th, abstain=True):
+    t = th["dominance"]                      # 0.6
+    cpu = r["run_f"] + r["wake_f"]
+    if not abstain:                          # forced: biggest share wins
+        return max(((r["blocked_io_f"], IO), (r["runq_f"], SCHED), (cpu, CPU)))[1]
+    if r["iowait_unknown"] and r["blocked_io_f"] + r["blocked_other_f"] > t:
+        return IND                           # cannot tell I/O from other blocking
+    if r["runq_f"] > t:
+        return SCHED
+    if r["blocked_io_f"] > t:
+        return IO if _block_evidence(r) else IND   # iowait but no disk activity
+    if cpu > t:
+        return CPU
+    return IND
+\end{lstlisting}
+Note the line for \IOW: the scheduler says ``blocked for I/O'', and the rule then asks the block layer to confirm that there really was disk activity. If the layers disagree, it abstains. That cross-check is what ``fusing'' means here.
+
+\subsection{The baselines}
+To test H1 we need classifiers that see only one layer. \f{FEATURE\_SETS} in \f{models.py} defines them:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lY@{}}
+\toprule
+Name & What it may look at \\
+\midrule
+\f{syscall} & wall time, share of time inside system calls, number of calls \\
+\f{block} & wall time, the thread's disk bytes, any disk completion \\
+\f{scheduler} & wall time and the five state shares \\
+\f{scheduler\_noiowait} & as above, but blocked-I/O and blocked-other merged into one \\
+\f{fused} & everything \\
+\f{fused\_noiowait} & everything except the \f{in\_iowait} split \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The single-layer \emph{rules} read their evidence the way a simple tool would. For example \f{rule\_syscall} says: mostly inside a system call means I/O, mostly outside means CPU.
+
+\subsection{The decision tree}
+\f{DecisionTree} in \f{models.py} is a small implementation of the standard CART method, about 80 lines. For each feature it sorts the operations, tries every threshold, and keeps the split that leaves the two sides purest (lowest \emph{Gini impurity}). It stops at depth 4 or when a side would have fewer than 5 operations. This is the tree it learned from the final data:
+
+\begin{lstlisting}
+if run_f <= 0.5985:
+    if blocked_io_f <= 0.5542:
+        if runq_f <= 0.6007:   -> INDETERMINATE
+        else:                  -> SCHEDULER_WAIT_DOMINATED
+    else:                      -> IO_WAIT_DOMINATED
+else:                          -> SYSCALL_CPU_DOMINATED   (mostly)
+\end{lstlisting}
+
+The tree was never told about the 60\% rule, yet it found thresholds of 0.60, 0.55 and 0.60 by itself. That is good evidence the features carry the right information.
+
+\subsection{Scores and confidence intervals}
+\src{src/classifier/evaluate.py, lines 69--71 and 78--95}
+\begin{lstlisting}[language=Python]
+def hc_error(truth, pred):
+    """High-confidence errors: committed to a cause, and wrong."""
+    return sum(p != m.IND and p != t for t, p in zip(truth, pred)) / len(pred)
+
+def bootstrap(rows, preds, fn, n, seed, preds_b=None):
+    by_run = {}
+    for i, r in enumerate(rows):
+        by_run.setdefault(r["run_id"], []).append(i)
+    runs = sorted(by_run)
+    rng = random.Random(seed)
+    vals = []
+    for _ in range(n):                       # n = 1000
+        idx = [i for run in (rng.choice(runs) for _ in runs) for i in by_run[run]]
+        truth = [rows[i]["label"] for i in idx]
+        v = fn(truth, [preds[i] for i in idx])
+        if preds_b is not None:              # difference between two classifiers
+            v -= fn(truth, [preds_b[i] for i in idx])
+        vals.append(v)
+    vals.sort()
+    return [vals[int(0.025 * (n - 1))], vals[int(0.975 * (n - 1))]]
+\end{lstlisting}
+\f{bootstrap} draws whole runs at random, with repeats, to build a fake test set of the same size. With \f{preds\_b} it computes the \emph{difference} between two classifiers on the same resampled data. That is how H1 is tested: if the 95\% interval of ``fused minus baseline'' does not include zero, the difference is real.
+
+\section{The papers behind it}
+
+\textbf{wPerf (OSDI 2018).} wPerf records context switches, wakeups and interrupt handlers, and builds a ``wait-for'' graph between threads to find the waits that limit a program's total throughput. Two things matter for us. First, it reconstructs waiting from the same scheduler events we use. Second, its authors explicitly avoid measuring I/O waiting by the length of system calls, because time inside a call might be data copying or contention rather than waiting. Our system-call-only baseline (0.647) confirms that judgement with numbers. \emph{Difference:} wPerf explains a whole program; we label single operations and grade the labels.
+
+\textbf{DIO (DSN-W 2023).} DIO traces 42 storage system calls with eBPF, adds context such as file paths, and sends everything to a search engine with dashboards. A person then looks for problems; the paper shows it finding thread contention behind slow RocksDB requests. \emph{Difference:} DIO sees only system calls and the diagnosis is manual. Its family of tools is what our \f{syscall} baseline stands for.
+
+\textbf{Rezvani et al.\ (ISPASS 2024).} They show that statistics of system calls, such as how often \f{recv} and \f{send} happen and the gaps between \f{epoll} calls, can track the latency and throughput of server applications without touching the application. They also state the limit: the kernel side does not know where one request ends and the next begins. \emph{Difference:} our markers supply exactly those boundaries, and we attribute a cause to each operation instead of estimating an aggregate.
+
+\section{Problems we hit and how we fixed them}
+
+\begin{itemize}
+\item \textbf{Wake latency looked like CPU contention.} After a disk read finishes, the thread is woken but starts running 30--40 microseconds later, because the CPU has to leave its idle state. The kernel counts that as the thread's CPU time. We first counted it as run-queue wait, which pushed short reads towards \SCH. Fix: a separate \emph{wake latency} state, recognised when the thread is switched in from the idle task, and counted with CPU time as the kernel does.
+\item \textbf{The transfer test silently selected nothing.} It compared the number \f{16384.0} with the text \f{"16384"}. Fix: a comparison that treats numbers as numbers (\f{\_same()} in \f{evaluate.py}).
+\item \textbf{The reference window is slightly wider than the marker window.} The kernel's accounting is read just outside the markers. To check the tracer fairly, \f{breakdown()} also measures over the exact reference window (the \f{val\_*} columns).
+\item \textbf{The reference label favours scheduler features.} It is computed from scheduler accounting. Fix: every result is also computed against the design label (\f{--truth expected}).
+\item \textbf{Fixed-slice analysis ran out of memory} at 1\,ms slices. We report 5, 20 and 100\,ms.
+\end{itemize}
+
+\section{Results that come from this segment}
+
+Test set: 5{,}184 operations in 108 runs. Reference label unless stated.
+
+\begin{center}
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Evidence & Model & Macro-F1 [95\% CI] & Abstains & High-conf.\ error \\
+\midrule
+System calls & tree & 0.647 [0.612, 0.673] & 19.3\% & 14.3\% \\
+Block layer & tree & 0.852 [0.795, 0.898] & 13.4\% & 9.8\% \\
+Scheduler & rules & 0.989 [0.979, 0.996] & 17.4\% & 0.7\% \\
+Scheduler, no iowait & rules & 0.879 [0.813, 0.937] & 8.9\% & 9.3\% \\
+Fused, no iowait & rules & 0.988 [0.978, 0.995] & 17.5\% & 0.7\% \\
+\textbf{Fused} & \textbf{rules} & \textbf{0.989 [0.979, 0.996]} & 17.4\% & 0.7\% \\
+Fused & tree & 0.986 [0.973, 0.994] & 17.5\% & 0.9\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{H1} (fused minus single source, with 95\% interval):
+\begin{itemize}
+\item versus system calls: $+0.545$ rules, $+0.339$ tree; versus block: $+0.609$ rules, $+0.134$ tree. Clear wins.
+\item versus scheduler: $+0.000$. No gain while \f{in\_iowait} is available.
+\item versus scheduler, both without \f{in\_iowait}: $+0.109$ [0.051, 0.176] rules, $+0.019$ [0.005, 0.038] tree. Both intervals exclude zero.
+\end{itemize}
+
+\textbf{H2:} forced, the fused rules are confidently wrong on 18.0\% of operations; abstaining, on 0.7\%. The interval of the difference is [11.0, 24.7] percentage points.
+
+\textbf{Where the fused tree is still wrong} (rows are the truth):
+\begin{center}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+ & I/O & Sched & CPU & Indet. \\
+\midrule
+I/O & \textbf{1727} & 0 & 0 & 0 \\
+Sched & 0 & \textbf{480} & 7 & 0 \\
+CPU & 0 & 21 & \textbf{2024} & 9 \\
+Indet. & 0 & 0 & 19 & \textbf{897} \\
+\bottomrule
+\end{tabular}
+\end{center}
+All 56 errors are between neighbouring classes near the 60\% line. Nothing is ever wrongly called I/O.
+
+\textbf{Ablations} (fused tree): without scheduler events 0.884; without block or system-call events 0.986 (no change); without markers 0.809 at 5\,ms slices, 0.898 at 20\,ms, 0.889 at 100\,ms. \textbf{Checks:} against the design label 0.946; using only runs with no dropped events and no clock drift 0.984; trained on 64\,KiB sequential I/O and tested on 16\,KiB random I/O, accuracy stays at 97.6\% or above.
+
+\section{Try it yourself}
+
+No administrator rights needed. In the project folder:
+
+\begin{lstlisting}[language=bash]
+python3 -m unittest discover -s tests          # 29 tests, should end with OK
+python3 src/classifier/evaluate.py experiments/processed/wsl/features.csv \
+    --config experiments/configs/eval.json --out /tmp/res | head -40
+cat /tmp/res/fused_tree.txt                    # the learned tree
+\end{lstlisting}
+
+The second command reruns the whole evaluation from the shipped feature table and prints the main table and the H1 lines. It takes about three minutes, most of it in the 1{,}000 bootstrap resamples. The numbers should match the table above exactly, because the random seed is fixed.
+
+To see one run's time split per operation, download \f{raw-wsl.tar.gz} from the GitHub release and run:
+
+\begin{lstlisting}[language=bash]
+mkdir -p raw && tar xzf raw-wsl.tar.gz -C raw
+R=raw/final-wsl/direct_read-t4-io64k-seq-d2ms-r3
+python3 src/correlation/breakdown.py $R $R/gt.jsonl --summary
+\end{lstlisting}
+
+For this run you should see about 98\% \f{blocked\_io} in the operation window, and the trace and the kernel agreeing within about 0.1 percentage points over the reference window.
+
+To score against the design label instead, add \f{--truth expected} to the \f{evaluate.py} command.
+
+\section{Limits and open questions}
+
+\begin{itemize}
+\item \textbf{Scheduler evidence alone is enough here.} Fusion only shows a benefit when \f{in\_iowait} is hidden. A workload where that flag misleads (for example, I/O completed by a different thread) would test fusion more sharply.
+\item \textbf{The tree's gain from fusion is small} ($+0.019$). In our workloads sleeps always last about 2\,ms, so a tree can partly recognise them by duration alone.
+\item \textbf{Macro-F1 is unstable when a class is nearly empty,} as in the transfer test. There we report accuracy and per-class recall instead.
+\item \textbf{The 60\% threshold is a choice.} Dropping operations within 5 percentage points of it changes the fused tree only from 0.986 to 0.988, so the conclusions do not hinge on it.
+\item \textbf{One environment.} Whether classifiers trained in WSL work unchanged on a virtual machine is the pending robustness check.
+\end{itemize}
+
+\end{document}

@@ -20,7 +20,7 @@ The labels are graded against the kernel's own per-thread accounting (`schedstat
 
 | Deliverable | Location |
 |---|---|
-| IEEE report (PDF) | [`report.pdf`](https://github.com/tarun-227/ebpf-stall-fingerprinting/releases/tag/v0.9-wsl) in the release |
+| IEEE report (PDF) | [`report.pdf`](https://github.com/tarun-227/ebpf-stall-fingerprinting/releases/latest) in the release |
 | LaTeX source of the report | [`report/`](report/) (`main.tex`, `refs.bib`, `generated/`); also `report-latex.zip` in the release |
 | Code ZIP (source, configs, processed results, raw traces) | `code.zip` in the release |
 | Reproduction guide | [`REPRODUCE.md`](REPRODUCE.md) |

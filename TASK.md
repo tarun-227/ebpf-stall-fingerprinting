@@ -4,10 +4,10 @@ Tick a box only after the step has run and its output was checked. Final experim
 
 ## Phase 0 — Environment
 - [x] Extract assignment constraints, labels, metrics, deliverables (see `PROJECT.md`, `RESEARCH_PLAN.md`).
-- [ ] Create Ubuntu 24.04 VM (4 vCPU, 8 GB) with a second virtual disk for tests; host I/O cache off.
-- [ ] Run `scripts/setup_vm.sh` to install the toolchain.
-- [ ] Run `scripts/check_capabilities.sh`; save its report to `experiments/env/`.
-- [ ] Confirm `sched_switch` exposes task state and `in_iowait` is readable via BTF; confirm block tracepoints fire on the test disk.
+- [x] Create Ubuntu 24.04 VM (QEMU/KVM inside WSL2, `scripts/vm_qemu.sh`; 4 vCPU, 4 GB) with a second virtual disk for tests; host I/O cache off.
+- [x] Run `scripts/setup_vm.sh` to install the toolchain (in the VM).
+- [x] Run `scripts/check_capabilities.sh` (VM, kernel 6.8: 0 missing items).
+- [x] Confirm `sched_switch` exposes task state and `in_iowait` is readable via BTF; confirm block tracepoints fire on the test disk.
 - [x] Set up `dm-delay` on the test disk and confirm the added latency with a timed direct read.
 - [x] Initialise the git repository.
 
@@ -69,7 +69,7 @@ Tick a box only after the step has run and its output was checked. Final experim
 - [x] Stall-duration estimation error against injected delay.
 - [x] Overhead: throughput, p99 latency, collector CPU, dropped events, tracing on versus off, against the budget.
 - [x] Ablations: no block, no scheduler, window size, PID-only versus markers, ring buffer size.
-- [ ] Robustness: second environment (Ubuntu VM); state the portability boundary.
+- [x] Robustness: second environment (Ubuntu VM, kernel 6.8); results below.
 - [ ] Ambiguous-case studies and failure analysis (write-up).
 
 ### Final WSL results (processed output in `experiments/processed/wsl/`)
@@ -83,6 +83,14 @@ Tick a box only after the step has run and its output was checked. Final experim
 - Delay sweep (0/5/20 ms): traced I/O-blocked time within 2-125 us of the kernel's; delay-length waits per operation about 1.1 (reads), 2.3 (sync_write), 17 (mmap_cold), 0 (sleep). dm-delay quantises 5 ms to ~11 ms and 20 ms to ~23 ms.
 - PID-only fixed windows, fused tree macro-F1: 5 ms 0.809, 20 ms 0.898, 100 ms 0.889 (markers: 0.986).
 - Overhead (`overhead-v2`, binary output, `--no-ref`): within budget for sleep (+4%), sync_write (<=1%), contended CPU (+1.5%). Over budget for microsecond operations (warm_read, buffered_write: 61-92% throughput loss) and disk reads (13-27%, noisy: an untraced repeat differs by 15-41%). Cost is a fixed 21-45 us per operation, mostly the two marker uprobes (~7-10 us each in WSL). Drops at 4 threads: warm_read 17.6% with the default buffer, 0% with 4 MiB.
+
+### VM robustness results (Ubuntu 24.04, kernel 6.8, QEMU/KVM; `experiments/processed/vm/`)
+- Same matrix as WSL (204 runs, all completed), same `eval.json`. Events 793,933, 0 dropped; drift flagged in 2 runs.
+- Fused rules 0.971 [0.958, 0.980], fused tree 0.966, scheduler-only tree 0.969, block-only tree 0.818, syscall-only tree 0.788.
+- H1 without `in_iowait`: rules +0.111 [0.056, 0.171]. H2: high-confidence errors 19.2% -> 1.4% (rules) at 18.9% abstention.
+- Trained on WSL dev runs, tested in the VM: rules unchanged (0.971); fused tree 0.964; fused tree without `in_iowait` 0.695 (timing thresholds do not transfer).
+- Delay sweep: traced I/O-blocked time within 422 us of the kernel's; 5 ms injected adds ~5.7 ms per read (WSL's ~11 ms was its coarse timer).
+- Overhead: noisier and higher under nested virtualisation; markers add ~100 us per operation, so sleep and sync_write lose 10-30%.
 
 ## Phase 7 — Literature
 - [ ] Read wPerf (OSDI '18) and Esteves et al. (DSN-W '23); adjust the novelty claim.

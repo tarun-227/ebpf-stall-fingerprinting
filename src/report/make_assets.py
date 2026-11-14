@@ -188,9 +188,31 @@ def data_delay(delay):
     return out
 
 
+def table_robust(wsl, vm):
+    """Macro-F1 in WSL, in the VM, and in the VM with classifiers trained on WSL runs."""
+    cross = vm["cross_environment"]["results"]
+    rows = []
+    for model, name in (("rules/fused", "Rules, fused"), ("tree/fused", "Tree, fused"),
+                        ("rules/fused_noiowait", "Rules, fused no iowait"),
+                        ("tree/fused_noiowait", "Tree, fused no iowait"),
+                        ("tree/scheduler", "Tree, scheduler"),
+                        ("tree/syscall", "Tree, syscall"), ("tree/block", "Tree, block")):
+        rows.append(" & ".join([name, f3(wsl["main"][model]["macro_f1"]),
+                                f3(vm["main"][model]["macro_f1"]),
+                                f3(cross[model]["macro_f1"])]) + r" \\")
+    h = [r["H2"]["rules/fused"] for r in (wsl, vm)]
+    rows.append(r"\midrule")
+    rows.append(" & ".join(["HC error, rules (forced$\\to$abst.)"]
+                           + [f"{pct(x['hc_error_forced'])}$\\to${pct(x['hc_error_abstain'])}"
+                              for x in h] + ["--"]) + r" \\")
+    return "\n".join(rows) + "\n"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--results", default="experiments/processed/wsl")
+    ap.add_argument("--vm", default="experiments/processed/vm",
+                    help="robustness results (second environment), used if present")
     ap.add_argument("--out", default="report/generated")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -212,6 +234,9 @@ def main():
     if os.path.exists(r("delay.json")):
         for name, text in data_delay(load(r("delay.json"))).items():
             write(a.out, "delay_" + name, text)
+    vm_ref = os.path.join(a.vm, "results-ref", "results.json")
+    if os.path.exists(vm_ref):
+        write(a.out, "tab_robust.tex", table_robust(ref, load(vm_ref)))
     print(f"wrote assets to {a.out}: " + ", ".join(sorted(os.listdir(a.out))))
 
 

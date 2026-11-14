@@ -198,6 +198,10 @@ def main():
                     help="score against the measured reference label (default) or the "
                          "design label; the reference comes from scheduler accounting, so "
                          "also check scheduler-based models against the design label")
+    ap.add_argument("--train-from", metavar="FEATURES_CSV",
+                    help="robustness: also train and tune on the dev runs of another "
+                         "environment's feature table and score those frozen classifiers "
+                         "on this table's test runs (no retuning)")
     args = ap.parse_args()
     with open(args.config) as f:
         cfg = json.load(f)
@@ -223,6 +227,19 @@ def main():
     main_res, preds = score_all(test, classifiers, cfg, "Main evaluation (test runs)")
     results["main"] = main_res
     truth = [r["label"] for r in test]
+
+    if args.train_from:
+        other = ft.load_table(args.train_from)
+        if args.truth == "expected":
+            for r in other:
+                r["reference_label"], r["label"] = r["label"], r["expected"]
+        other_base = [r for r in other if not matches(r, cfg["transfer"]["test_filter"])] \
+            if cfg.get("transfer") else other
+        other_dev, _ = split(other_base, cfg)
+        cross, _ = score_all(test, build_classifiers(other_dev, cfg), cfg,
+                             f"Cross-environment: trained on {os.path.basename(args.train_from)}"
+                             f" ({len(other_dev)} dev ops), tested here")
+        results["cross_environment"] = {"trained_on": args.train_from, "results": cross}
 
     # Confusion matrices and per-class scores for the fused models.
     results["fused_detail"] = {

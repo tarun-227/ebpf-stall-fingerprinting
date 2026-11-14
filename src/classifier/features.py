@@ -53,7 +53,8 @@ def reference_label(workload, cpu_f, runq_f, blocked_f):
 
 def find_runs(roots):
     for root in roots:
-        for dirpath, _, files in os.walk(root):
+        for dirpath, dirs, files in os.walk(root):
+            dirs.sort()                     # fixed order, independent of the filesystem
             if "events.bin" not in files and "events.jsonl" not in files:
                 continue
             gt = os.path.join(dirpath, "gt.jsonl")

@@ -175,17 +175,37 @@ OVERHEAD_ID=overhead-wsl-v2 OVERHEAD_OUT=overhead-v2 scripts/analyse_results.sh 
 
 ### 5.3 On a VM with a spare test disk (robustness setup)
 
+The report's VM results come from an Ubuntu 24.04 cloud image (kernel 6.8) under QEMU/KVM, run inside WSL2. `scripts/vm_qemu.sh` builds and boots it. It needs `qemu-system-x86 qemu-utils cloud-image-utils` and membership of group `kvm`:
+
 ```bash
-sudo scripts/dm_delay.sh create sdb 2              # sdb = disposable disk, host I/O cache off
-sudo scripts/dm_delay.sh format --wipe sdb         # DESTROYS sdb
-sudo scripts/dm_delay.sh mount /mnt/stall
-sudo env RAW_DIR=$HOME/raw DELAY_MS=2 THREADS="1 4" REPS="1 2 3" \
-     DEVS="$(sudo scripts/dm_delay.sh status | grep -o '\-d [0-9:]*' | tr '\n' ' ')" \
-     scripts/run_matrix.sh /mnt/stall/data final-vm
-python3 src/classifier/features.py $HOME/raw/final-vm --out experiments/processed/vm/features.csv
+mkdir -p ~/vm && curl -fLo ~/vm/noble.img \
+  https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+scripts/vm_qemu.sh create && scripts/vm_qemu.sh start     # SSH on localhost:2222, user stall
 ```
 
-The third `REPS` value doubles as the test split, so set `test_reps` in a copy of `eval.json` to `[3]`.
+Copy the repository into the VM, then run these inside it. `vdb` is the 4 GB test disk, with host caching off:
+
+```bash
+sudo scripts/setup_vm.sh && make && sudo scripts/check_capabilities.sh
+sudo scripts/dm_delay.sh create vdb 0
+sudo scripts/dm_delay.sh format --wipe vdb         # DESTROYS vdb
+sudo env STEPS="check matrix sweep overhead" OVERHEAD_ID=overhead-vm scripts/run_final_wsl.sh ~/stalltest
+```
+
+`run_final_wsl.sh` reuses the existing delay device rather than creating a loop file. It names its outputs `final-wsl` and `delay-sweep-wsl`; rename them to `final-vm` and `delay-sweep-vm`. The runs take about 25 minutes in total. Then, on the host:
+
+```bash
+OUT=experiments/processed/vm
+python3 src/classifier/features.py RAW/final-vm --out $OUT/features.csv
+python3 src/classifier/evaluate.py $OUT/features.csv --config experiments/configs/eval.json \
+    --out $OUT/results-ref --train-from experiments/processed/wsl/features.csv > $OUT/results-ref.txt
+python3 src/classifier/features.py RAW/delay-sweep-vm --out /tmp/vm-delay.csv
+python3 src/classifier/delay_analysis.py /tmp/vm-delay.csv --out $OUT/delay.json
+python3 src/classifier/overhead.py RAW/overhead-vm --out $OUT/overhead.json
+python3 src/report/make_assets.py          # adds report/generated/tab_robust.tex
+```
+
+`--train-from` trains and tunes the classifiers on another environment's development runs, then scores them on this environment's test runs. The scores are stored under `cross_environment` in `results.json`.
 
 ### 5.4 Running the tool on its own
 

@@ -1,0 +1,3 @@
+final-vm        runs  204  events     793933  dropped 0 (0.0000%)  clock ratio 0.9949-1.0184  drift-flagged 2
+delay-sweep-vm  runs  108  events     367153  dropped 0 (0.0000%)  clock ratio 0.9970-1.0119  drift-flagged 0
+overhead-vm     runs  230  events    9797508  dropped 96729 (0.9873%)  clock ratio 0.9934-1.0595  drift-flagged 1

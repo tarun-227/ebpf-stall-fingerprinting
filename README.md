@@ -37,6 +37,13 @@ Four study guides in plain language, in [`docs/`](docs/):
 - **Stall time:** traced I/O wait matches the kernel within 125 µs at 0, 5 and 20 ms injected delay.
 - **Overhead:** within the 10% budget for millisecond operations. Microsecond operations lose 60–90% of their throughput, mostly from the marker probes (about 7–10 µs each).
 
+**Second environment (Ubuntu 24.04 VM, kernel 6.8, QEMU/KVM):**
+- The same matrix gives fused rules macro-F1 0.971 [0.958, 0.980], and H1 and H2 both hold.
+- Rules tuned on WSL runs score the same in the VM.
+- A decision tree trained on WSL without `in_iowait` does not transfer: it drops to 0.695.
+
+Details are in `experiments/processed/vm/`.
+
 Full numbers are in [`report/`](report/) and [`experiments/processed/wsl/`](experiments/processed/wsl/).
 
 ## Repository layout
@@ -100,8 +107,6 @@ See [REPRODUCE.md](REPRODUCE.md) for every option, the expected output of each s
 
 ## Still to do
 
-- [ ] Robustness check on an Ubuntu 24.04 VM (VirtualBox, second disk with host cache off); add the results to the report.
-- [ ] Read wPerf (OSDI '18) and Esteves et al. (DSN-W '23), and check the sentences that cite them.
 - [ ] Fill in author names and affiliation in `report/main.tex`.
 - [ ] Final proofread, then submit.
 

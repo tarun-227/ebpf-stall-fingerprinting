@@ -1,0 +1,50 @@
+workload      thr  delay     n  trace io-blocked  kernel blocked  |trace-kernel|  IO label
+cold_read       1     0ms   144             948us           946us             4us       83%
+cold_read       1     5ms   144            6666us          6657us            15us      100%
+cold_read       1    20ms   144           21686us         21681us            18us      100%
+                 slope: 1.02 delay-length waits per operation
+cold_read       4     0ms   144            1244us          1242us             7us       96%
+cold_read       4     5ms   144            6880us          6871us             6us      100%
+cold_read       4    20ms   144           21241us         21235us             8us      100%
+                 slope: 0.99 delay-length waits per operation
+direct_read     1     0ms   144             942us           938us            11us       94%
+direct_read     1     5ms   144            6604us          6600us            17us      100%
+direct_read     1    20ms   144           22148us         22147us            20us      100%
+                 slope: 1.05 delay-length waits per operation
+direct_read     4     0ms   144            1011us          1005us             5us      100%
+direct_read     4     5ms   144            7219us          7217us             7us       99%
+direct_read     4    20ms   144           21870us         21871us             7us      100%
+                 slope: 1.03 delay-length waits per operation
+mixed           1     0ms   144            1131us          1131us             3us        0%
+mixed           1     5ms   144            6583us          6579us            13us        0%
+mixed           1    20ms   144           21587us         21588us            16us        0%
+                 slope: 1.02 delay-length waits per operation
+mixed           4     0ms   144             793us           793us             6us        0%
+mixed           4     5ms   144            6763us          6800us            31us        0%
+mixed           4    20ms   144           21601us         21614us            53us        0%
+                 slope: 1.02 delay-length waits per operation
+mmap_cold       1     0ms   144           13878us         13870us           129us      100%
+mmap_cold       1     5ms   144          107274us        107188us           220us      100%
+mmap_cold       1    20ms   144          347290us        347163us           264us      100%
+                 slope: 16.37 delay-length waits per operation
+mmap_cold       4     0ms   144           15961us         15955us           221us      100%
+mmap_cold       4     5ms   144          110810us        110734us           217us      100%
+mmap_cold       4    20ms   144          350370us        350314us           422us      100%
+                 slope: 16.34 delay-length waits per operation
+sleep           1     0ms   144               0us          2148us            10us        0%
+sleep           1     5ms   144               0us          2154us            12us        0%
+sleep           1    20ms   144               0us          2172us            13us        0%
+                 slope: 0.00 delay-length waits per operation
+sleep           4     0ms   144               0us          2140us             4us        0%
+sleep           4     5ms   144               0us          2153us             5us        0%
+sleep           4    20ms   144               0us          2160us             5us        0%
+                 slope: -0.00 delay-length waits per operation
+sync_write      1     0ms   144            2869us          2859us            15us       98%
+sync_write      1     5ms   144           15779us         15726us            34us      100%
+sync_write      1    20ms   144           45797us         45759us            27us      100%
+                 slope: 2.08 delay-length waits per operation
+sync_write      4     0ms   144            4876us          4874us            24us      100%
+sync_write      4     5ms   144           16037us         16032us            29us      100%
+sync_write      4    20ms   144           46305us         46302us            24us      100%
+                 slope: 2.06 delay-length waits per operation
+wrote experiments/processed/vm/delay.json

@@ -295,13 +295,31 @@ Workload & Thr & Tput loss\,\% & p99 +\% & CPU & Coll.\,\% & Drops\,\% \\
 \end{tabular}
 \end{table}
 
+\subsection{Second environment}
+We repeated the final matrix, the delay sweep and the overhead runs unchanged in an Ubuntu 24.04 VM (stock kernel 6.8, 4 vCPUs, 4\,GiB) under QEMU/KVM, with \texttt{dm-delay} on a separate virtual disk whose host cache is off. All 204 matrix runs completed with no dropped events and 2 drift-flagged runs (WSL: 0.54\% and 26). Table~\ref{tab:robust} shows that the conclusions hold: fused rules reach 0.971 [0.958, 0.980], fusion beats syscall-only and block-only evidence, it adds +0.111 [+0.056, +0.171] over scheduler evidence without \texttt{in\_iowait}, and abstention cuts high-confidence errors from 19.2\% to 1.4\%. Rules tuned on WSL runs score the same in the VM, but the tree trained on WSL without \texttt{in\_iowait} falls to 0.695: its learned timing thresholds do not carry over, while rules on time shares do. Traced I/O-blocked time matches the kernel within 422\,\textmu s; here 5\,ms of injected delay adds about 5.7\,ms per read, which confirms that the 11\,ms seen under WSL is that kernel's coarse timer. Overhead is higher: the two marker uprobes add about 100\,\textmu s per operation under nested virtualisation, so even \texttt{sleep} and \texttt{sync\_write} lose 10--30\% throughput, and run-to-run noise is large.
+
+\begin{table}[t]
+\centering
+\caption{Macro-F1 on test runs in WSL (kernel 6.6) and the VM (kernel 6.8); last column: classifiers trained on WSL runs, tested in the VM}
+\label{tab:robust}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Classifier & WSL & VM & VM, WSL-trained \\
+\midrule
+\inputtab{generated/tab_robust.tex}
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{Threats to validity}
-The reference label comes from scheduler accounting, so scheduler features agree with it partly by construction; we therefore also report the design label, which agrees with the reference on 94.9\% of operations and gives the same conclusions. All workloads are synthetic and single-purpose. WSL adds a virtualised clock and disk; a second environment (an Ubuntu VM) is needed to confirm portability. % TODO: add VM results.
+The reference label comes from scheduler accounting, so scheduler features agree with it partly by construction; we therefore also report the design label, which agrees with the reference on 94.9\% of operations (93.3\% in the VM) and gives the same conclusions. All workloads are synthetic and single-purpose. Both environments are virtualised; bare-metal hardware and other file systems remain untested.
 
 %=====================================================================
 \section{Conclusion}
 %=====================================================================
-We built and evaluated an eBPF tool that labels individual operations as I/O-wait, scheduler-wait or syscall/CPU dominated, or declines to decide. Against the kernel's own accounting it reaches macro-F1 0.989, far above syscall-only (0.647) and block-only (0.852) evidence, and abstention lowers high-confidence errors from 18\% to under 1\%. Fusion pays off when the scheduler does not know why a thread blocked; while the kernel's \texttt{in\_iowait} flag is available, scheduler evidence alone is as good. Precise operation boundaries are worth about 0.1 macro-F1 over fixed windows, but their probes cost tens of microseconds per operation, so the tool suits diagnosing millisecond-scale stalls rather than always-on tracing of microsecond operations. Future work: lighter markers (USDT or kernel-side boundaries), real applications, and asynchronous I/O (\texttt{io\_uring}), where the thread that waits is not the one that submitted the request.
+We built and evaluated an eBPF tool that labels individual operations as I/O-wait, scheduler-wait or syscall/CPU dominated, or declines to decide. Against the kernel's own accounting it reaches macro-F1 0.989, far above syscall-only (0.647) and block-only (0.852) evidence, and abstention lowers high-confidence errors from 18\% to under 1\%. Fusion pays off when the scheduler does not know why a thread blocked; while the kernel's \texttt{in\_iowait} flag is available, scheduler evidence alone is as good. Precise operation boundaries are worth about 0.1 macro-F1 over fixed windows, but their probes cost tens of microseconds per operation, so the tool suits diagnosing millisecond-scale stalls rather than always-on tracing of microsecond operations. Future work: lighter markers (USDT or kernel-side boundaries), real applications, and asynchronous I/O (\texttt{io\_uring}), where the thread that waits is not the one that submitted the request. The accuracy results held unchanged in a second environment (a kernel 6.8 VM).
 
 \bibliographystyle{IEEEtran}
 \bibliography{refs}

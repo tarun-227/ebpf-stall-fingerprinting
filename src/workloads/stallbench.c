@@ -216,7 +216,7 @@ static bool needs_direct_alignment(enum wl w)
 
 /*
  * Ground-truth label by design. A cause must take more than 60% of the
- * operation's wall time to count as dominant (declared in PROJECT.md).
+ * operation's wall time to count as dominant (declared before the experiments).
  *
  * Busy-loop operations: with n runnable loops sharing c CPUs, each loop runs
  * about c/n of the time and waits 1 - c/n of it.

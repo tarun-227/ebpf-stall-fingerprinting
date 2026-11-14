@@ -20,7 +20,7 @@ The labels are graded against the kernel's own per-thread accounting (`schedstat
 
 | Deliverable | Location |
 |---|---|
-| IEEE report (PDF) | [`report.pdf`](https://github.com/tarun-227/ebpf-stall-fingerprinting/releases/latest) in the release |
+| IEEE report (PDF) | [`report/report.pdf`](report/report.pdf); also in the [release](https://github.com/tarun-227/ebpf-stall-fingerprinting/releases/latest) |
 | LaTeX source of the report | [`report/`](report/) (`main.tex`, `refs.bib`, `generated/`); also `report-latex.zip` in the release |
 | Code ZIP (source, configs, processed results, raw traces) | `code.zip` in the release |
 | Reproduction guide | [`REPRODUCE.md`](REPRODUCE.md) |
@@ -89,10 +89,8 @@ tests/                          unit tests (29)
 experiments/configs/eval.json   evaluation settings, fixed before the final runs
 experiments/processed/wsl/      final results (main environment)
 experiments/processed/vm/       robustness results (Ubuntu VM)
-report/                         LaTeX source of the report
-docs/                           team study notes (overview and three deep dives)
+report/                         report PDF (report.pdf) and its LaTeX source
 REPRODUCE.md                    full reproduction guide
-RESEARCH_PLAN.md                research questions, hypotheses and design
 ```
 
 ---
@@ -170,7 +168,7 @@ The script works on any Linux host, not only WSL. When no spare disk is availabl
 - every option;
 - the second-environment (VM) setup, using `scripts/vm_qemu.sh`;
 - the expected output of each step;
-- known limitations: WSL clock drift, `dm-delay` timer rounding, and host disk caching.
+- known limitations: WSL clock drift, `dm-delay` delays that are longer than nominal under WSL, and host disk caching.
 
 ---
 

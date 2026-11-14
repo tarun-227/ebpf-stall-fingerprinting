@@ -10,7 +10,7 @@ share of one CPU, and dropped-event rate. Each repetition is compared with
 the tracing-off run of the same repetition; the table shows the median over
 repetitions and the min-max range. "offrepeat" is a second untraced run: its
 "loss" is the noise floor, which any overhead must exceed to be meaningful.
-The budget (declared in PROJECT.md before
+The budget (declared before
 any measurement) is at most 10% throughput loss and under 1% dropped events.
 """
 import argparse

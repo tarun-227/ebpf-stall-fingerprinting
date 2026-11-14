@@ -34,10 +34,9 @@ scripts/                      setup, capability check, dm-delay, experiment runn
 tests/                        unit tests for correlation and classifiers (29 tests)
 experiments/configs/eval.json evaluation settings, frozen before the final runs
 experiments/processed/wsl/    final processed results (the numbers in the report)
-experiments/processed/pilot-wsl/   pilot results (tuning only, not reported)
+experiments/processed/vm/     robustness results from the Ubuntu VM
 report/                       LaTeX source of the report (main.tex, refs.bib, generated/)
 data/raw-wsl.tar.gz           raw traces: final-wsl (204 runs), delay-sweep-wsl (108 runs)
-RESEARCH_PLAN.md, PROJECT.md, TASK.md   plan, fixed decisions, checklist with results
 ```
 
 The raw traces of the overhead runs (1.6 GB) are not in the ZIP. Their processed results (`experiments/processed/wsl/overhead-v2.json`) are included, and level C regenerates the raw traces.
@@ -78,7 +77,7 @@ On Ubuntu 24.04 you can install everything with:
 sudo scripts/setup_vm.sh
 ```
 
-The script also creates a Python venv with numpy and pandas for convenience; the analysis does not need them. In WSL, `linux-tools-$(uname -r)` does not exist. Install `linux-tools-generic` instead; the Makefile finds its `bpftool`.
+In WSL, `linux-tools-$(uname -r)` does not exist. Install `linux-tools-generic` instead; the Makefile finds its `bpftool`.
 
 **Report:** a LaTeX distribution with IEEEtran, pgfplots and booktabs (Overleaf has them all). On Ubuntu:
 
@@ -95,7 +94,7 @@ python3 src/report/make_assets.py          # reads experiments/processed/wsl, wr
 cd report && latexmk -pdf main.tex         # or upload main.tex, refs.bib and generated/ to Overleaf
 ```
 
-**Expected:** `main.pdf`, 5 pages. Table II shows fused rules at macro-F1 0.989 [0.979, 0.996] and the fused tree at 0.986.
+**Expected:** `main.pdf`, 6 pages. Table II shows fused rules at macro-F1 0.989 [0.979, 0.996] and the fused tree at 0.986.
 
 ---
 
@@ -105,6 +104,13 @@ cd report && latexmk -pdf main.tex         # or upload main.tex, refs.bib and ge
 python3 -m unittest discover -s tests      # 29 tests, all OK
 mkdir -p raw && tar xzf data/raw-wsl.tar.gz -C raw
 scripts/analyse_results.sh raw wsl         # rewrites experiments/processed/wsl/ and report/generated/
+```
+
+If the script stops partway, the main evaluation can be rerun directly with the two commands it wraps; this is the path we checked last:
+
+```bash
+python3 src/classifier/features.py raw/final-wsl --out /tmp/features.csv
+python3 src/classifier/evaluate.py /tmp/features.csv --config experiments/configs/eval.json --out /tmp/results
 ```
 
 The overhead step is skipped because its raw data is not shipped. The window ablation dominates the run time; its 5 ms case alone takes about 30 minutes.

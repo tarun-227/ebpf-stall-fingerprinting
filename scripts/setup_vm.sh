@@ -22,13 +22,9 @@ apt-get install -y \
   libbpf-dev libelf-dev zlib1g-dev \
   "linux-tools-${KREL}" linux-tools-common "linux-headers-${KREL}" \
   dmsetup fio sysstat util-linux \
-  python3 python3-venv python3-pip
+  python3
 
-# Python environment for correlation, classification and plots.
-sudo -u "$REAL_USER" python3 -m venv "${REPO_ROOT}/.venv"
-sudo -u "$REAL_USER" "${REPO_ROOT}/.venv/bin/pip" install --upgrade pip
-sudo -u "$REAL_USER" "${REPO_ROOT}/.venv/bin/pip" install \
-  numpy pandas scikit-learn matplotlib scipy
+# The analysis uses only the Python standard library, so no packages are installed.
 
 # Record exact versions for the environment manifest.
 mkdir -p "${REPO_ROOT}/experiments/env"
@@ -39,10 +35,9 @@ mkdir -p "${REPO_ROOT}/experiments/env"
   echo "bpftool: $(bpftool version 2>/dev/null | head -n1 || echo missing)"
   echo "libbpf: $(pkg-config --modversion libbpf 2>/dev/null || echo missing)"
   echo "fio: $(fio --version 2>/dev/null || echo missing)"
-  echo "python: $("${REPO_ROOT}/.venv/bin/python" --version)"
-  "${REPO_ROOT}/.venv/bin/pip" freeze | sed 's/^/pip: /'
+  echo "python: $(python3 --version)"
 } > "${REPO_ROOT}/experiments/env/toolchain_versions.txt"
-chown -R "$REAL_USER": "${REPO_ROOT}/experiments" "${REPO_ROOT}/.venv"
+chown -R "$REAL_USER": "${REPO_ROOT}/experiments"
 
 echo "Toolchain installed. Versions saved to experiments/env/toolchain_versions.txt"
 echo "Next: sudo ./scripts/check_capabilities.sh"

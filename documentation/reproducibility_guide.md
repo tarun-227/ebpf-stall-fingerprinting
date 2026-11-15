@@ -25,7 +25,9 @@ latex_report/
   main.tex, references.bib         IEEE conference report source
   report.pdf                       compiled report (6 pages)
   generated/                       tables (*.tex) and plot data (*.dat) that main.tex inputs
-  figures/                         the report's 3 figures as PNG (main.tex draws them itself)
+  figures/                         architecture.png, workflow.png, results.png (summary of all
+                                   results); fig1-3: the report's own figures as PNG
+  figures/source/                  LaTeX sources of the three summary figures
 code/
   Makefile                         builds build/stallbench and build/stalltrace
   requirements.txt                 dependencies (Python: standard library only) and tool versions
@@ -41,6 +43,7 @@ code/
   src/classifier/delay_analysis.py injected-delay sweep analysis
   src/classifier/overhead.py       tracing on vs off: throughput, p99, CPU per op, drops
   src/report/make_assets.py        writes ../latex_report/generated/ from the results
+  src/report/make_figures.py       writes the source of the summary results figure
   src/label_trace.py               labels the operations of any traced program (Section 7)
   examples/marked_example.c        how to mark operations in your own program
   scripts/                         setup, checks, dm-delay, experiment runners, analysis, VM
@@ -144,6 +147,15 @@ cd ../latex_report && latexmk -pdf main.tex
 ```
 
 **Expected:** `make_assets.py` rewrites the files in `generated/` with identical content; `main.pdf` has 6 pages, and Table II shows fused rules at macro-F1 0.989 [0.979, 0.996] and the fused tree at 0.986.
+
+The summary figures in `latex_report/figures/` are built the same way. `results.tex` is generated from the result files; `architecture.tex` and `workflow.tex` are drawn by hand. Each compiles to a one-page PDF, which is then saved as a PNG at 300 dpi (with any PDF-to-image tool, for example `pdftoppm -png -r 300 -singlefile results.pdf results`):
+
+```bash
+python3 src/report/make_figures.py     # writes ../latex_report/figures/source/results.tex
+cd ../latex_report/figures/source && pdflatex architecture.tex && pdflatex workflow.tex && pdflatex results.tex
+```
+
+**Expected:** `results.png` shows (a) macro-F1 by evidence source for WSL and the VM, (b) high-confidence error forced vs abstaining (18.0% → 0.7% for WSL rules), (c) traced vs kernel stall time on a log–log plot (maximum error 125 µs WSL, 422 µs VM), and (d) throughput loss per workload against the 10% budget.
 
 ---
 

@@ -22,7 +22,7 @@ The labels are graded against the kernel's own per-thread accounting (`schedstat
 |---|---|
 | IEEE report (PDF, 6 pages) | [`latex_report/report.pdf`](latex_report/report.pdf) |
 | LaTeX source of the report | [`latex_report/`](latex_report/): `main.tex`, `references.bib`, `generated/` (tables and plot data) |
-| Figures | [`architecture.png`](latex_report/figures/architecture.png), [`workflow.png`](latex_report/figures/workflow.png), [`results.png`](latex_report/figures/results.png) in `latex_report/figures/`, plus the report's own figures |
+| Figures | [`architecture.png`](latex_report/figures/architecture.png), [`workflow.png`](latex_report/figures/workflow.png), [`results.png`](latex_report/figures/results.png) in `latex_report/figures/` |
 | Source code, scripts, configuration, dependencies | [`code/`](code/) (`requirements.txt` lists dependencies and versions) |
 | Reproducibility guide | [`documentation/reproducibility_guide.md`](documentation/reproducibility_guide.md) (and `.pdf`) |
 | Raw traces (datasets) | `supplementary/datasets/` (`raw-wsl.tar.gz`, `raw-vm.tar.gz`) |

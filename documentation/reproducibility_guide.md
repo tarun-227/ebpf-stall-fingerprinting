@@ -25,8 +25,7 @@ latex_report/
   main.tex, references.bib         IEEE conference report source
   report.pdf                       compiled report (6 pages)
   generated/                       tables (*.tex) and plot data (*.dat) that main.tex inputs
-  figures/                         architecture.png, workflow.png, results.png (summary of all
-                                   results); fig1-3: the report's own figures as PNG
+  figures/                         architecture.png, workflow.png, results.png (summary of all results)
   figures/source/                  LaTeX sources of the three summary figures
 code/
   Makefile                         builds build/stallbench and build/stalltrace

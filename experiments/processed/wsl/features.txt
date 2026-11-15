@@ -1,5 +1,0 @@
-9792 operations from 204 runs -> experiments/processed/wsl/features.csv
-  IO_WAIT_DOMINATED          4027
-  SCHEDULER_WAIT_DOMINATED   819
-  SYSCALL_CPU_DOMINATED      3440
-  INDETERMINATE              1506

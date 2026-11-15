@@ -1,0 +1,101 @@
+design label agrees with reference label on 94.9% of 9792 operations
+scoring against the DESIGN label
+
+Main evaluation (test runs): 5184 operations in 108 runs
+  classifier                 macro-F1  95% CI          accuracy  abstain hc-error  hc-error forced
+  rules/fused                   0.935  [0.894, 0.969]    0.949    0.193    0.042            0.226
+  rules/scheduler               0.935  [0.894, 0.969]    0.949    0.193    0.042            0.226
+  rules/syscall                 0.410  [0.339, 0.478]    0.546    0.075    0.447            0.518
+  rules/block                   0.378  [0.338, 0.412]    0.639    0.000    0.361            0.361
+  rules/block_thread            0.413  [0.374, 0.439]    0.694    0.000    0.306            0.306
+  rules/block_device            0.378  [0.338, 0.412]    0.639    0.000    0.361            0.361
+  rules/scheduler_noiowait      0.838  [0.772, 0.893]    0.866    0.108    0.127            0.229
+  rules/fused_noiowait          0.934  [0.894, 0.968]    0.948    0.194    0.042            0.229
+  tree/syscall                  0.626  [0.577, 0.669]    0.807    0.200    0.159            0.328
+  tree/block                    0.806  [0.729, 0.873]    0.862    0.134    0.129            0.259
+  tree/block_thread             0.806  [0.729, 0.873]    0.862    0.134    0.129            0.259
+  tree/block_device             0.791  [0.716, 0.851]    0.811    0.258    0.096            0.283
+  tree/scheduler                0.940  [0.911, 0.962]    0.949    0.238    0.019            0.236
+  tree/scheduler_noiowait       0.911  [0.877, 0.939]    0.915    0.261    0.025            0.242
+  tree/fused                    0.946  [0.917, 0.968]    0.952    0.238    0.018            0.235
+  tree/fused_noiowait           0.932  [0.901, 0.956]    0.937    0.251    0.018            0.241
+
+H1 (fused minus single source, macro-F1, 95% CI):
+  rules: fused - syscall                    +0.525  [+0.449, +0.597]
+  rules: fused - block                      +0.557  [+0.503, +0.608]
+  rules: fused - block_thread               +0.522  [+0.472, +0.566]
+  rules: fused - block_device               +0.557  [+0.503, +0.608]
+  rules: fused - scheduler                  +0.000  [+0.000, +0.000]
+  rules: fused_noiowait - syscall           +0.524  [+0.449, +0.596]
+  rules: fused_noiowait - block             +0.557  [+0.502, +0.607]
+  rules: fused_noiowait - scheduler_noiowait+0.097  [+0.043, +0.159]
+  tree: fused - syscall                     +0.320  [+0.282, +0.361]
+  tree: fused - block                       +0.139  [+0.082, +0.204]
+  tree: fused - block_thread                +0.139  [+0.082, +0.204]
+  tree: fused - block_device                +0.154  [+0.106, +0.213]
+  tree: fused - scheduler                   +0.006  [-0.003, +0.016]
+  tree: fused_noiowait - syscall            +0.306  [+0.269, +0.348]
+  tree: fused_noiowait - block              +0.125  [+0.067, +0.193]
+  tree: fused_noiowait - scheduler_noiowait +0.021  [+0.007, +0.038]
+
+H2 (high-confidence error, forced minus abstaining, 95% CI):
+  rules/fused           forced 0.226  abstaining 0.042  (abstains on 19.3%)  diff CI [+0.119, +0.264]
+  rules/fused_noiowait  forced 0.229  abstaining 0.042  (abstains on 19.4%)  diff CI [+0.122, +0.265]
+  tree/fused            forced 0.235  abstaining 0.018  (abstains on 23.8%)  diff CI [+0.147, +0.299]
+  tree/fused_noiowait   forced 0.241  abstaining 0.018  (abstains on 25.1%)  diff CI [+0.153, +0.306]
+
+Sensitivity: only runs with no dropped events and no clock drift (keeps 88.0% of operations, 95 runs)
+  rules/fused                macro-F1 0.934  accuracy 0.945  hc-error 0.048
+  tree/fused                 macro-F1 0.945  accuracy 0.949  hc-error 0.020
+  rules/fused_noiowait       macro-F1 0.934  accuracy 0.944  hc-error 0.048
+  tree/fused_noiowait        macro-F1 0.929  accuracy 0.932  hc-error 0.021
+  tree/scheduler             macro-F1 0.939  accuracy 0.946  hc-error 0.022
+  tree/syscall               macro-F1 0.618  accuracy 0.796  hc-error 0.168
+  tree/block                 macro-F1 0.809  accuracy 0.859  hc-error 0.134
+
+Ablations (fused tree with a layer removed, macro-F1):
+  no block events       0.940  [0.911, 0.962]
+  no scheduler events   0.856  [0.781, 0.921]
+  no syscall events     0.946  [0.917, 0.968]
+
+Transfer (different I/O size and pattern): 1152 operations in 24 runs
+  classifier                 macro-F1  95% CI          accuracy  abstain hc-error  hc-error forced
+  rules/fused                   0.998  [0.995, 1.000]    0.997    0.003    0.000            0.001
+  rules/scheduler               0.998  [0.995, 1.000]    0.997    0.003    0.000            0.001
+  rules/syscall                 0.857  [0.703, 0.957]    0.750    0.000    0.250            0.250
+  rules/block                   1.000  [1.000, 1.000]    1.000    0.000    0.000            0.000
+  rules/block_thread            0.997  [0.992, 1.000]    0.994    0.000    0.006            0.006
+  rules/block_device            1.000  [1.000, 1.000]    1.000    0.000    0.000            0.000
+  rules/scheduler_noiowait      0.998  [0.995, 1.000]    0.997    0.003    0.000            0.001
+  rules/fused_noiowait          0.996  [0.988, 1.000]    0.991    0.009    0.000            0.001
+  tree/syscall                  0.938  [0.908, 0.964]    0.884    0.115    0.002            0.002
+  tree/block                    0.898  [0.810, 0.963]    0.814    0.180    0.006            0.006
+  tree/block_thread             0.898  [0.810, 0.963]    0.814    0.180    0.006            0.006
+  tree/block_device             0.845  [0.720, 0.940]    0.731    0.269    0.000            0.009
+  tree/scheduler                0.998  [0.995, 1.000]    0.997    0.003    0.000            0.003
+  tree/scheduler_noiowait       0.986  [0.974, 0.995]    0.973    0.027    0.000            0.000
+  tree/fused                    0.998  [0.995, 1.000]    0.997    0.003    0.000            0.003
+  tree/fused_noiowait           0.989  [0.981, 0.996]    0.979    0.021    0.000            0.000
+
+  accuracy on the same workloads: trained size/pattern (1728 ops) vs transfer size/pattern (1152 ops)
+  rules/fused                0.999 -> 0.997   recall: IO 1.00
+  tree/fused                 0.999 -> 0.997   recall: IO 1.00
+  rules/fused_noiowait       0.997 -> 0.991   recall: IO 0.99
+  tree/fused_noiowait        0.976 -> 0.979   recall: IO 0.98
+  tree/scheduler             0.999 -> 0.997   recall: IO 1.00
+
+Tracer vs kernel accounting, same window (sum of |error| over cpu/runq/blocked, share of wall):
+  buffered_write   n=720   mean 0.0217  median 0.0062  p95 0.0588
+  cold_read        n=1008  mean 0.0013  median 0.0006  p95 0.0040
+  cpu              n=720   mean 0.0039  median 0.0002  p95 0.0274
+  cpu_contended    n=720   mean 0.0139  median 0.0004  p95 0.1504
+  direct_read      n=1008  mean 0.0012  median 0.0005  p95 0.0025
+  mixed            n=720   mean 0.0129  median 0.0005  p95 0.0331
+  mmap_cold        n=1008  mean 0.0009  median 0.0006  p95 0.0030
+  mmap_warm        n=720   mean 0.0309  median 0.0112  p95 0.0895
+  neighbor_io      n=720   mean 0.0014  median 0.0002  p95 0.0037
+  sleep            n=720   mean 0.0065  median 0.0036  p95 0.0207
+  sync_write       n=1008  mean 0.0024  median 0.0006  p95 0.0045
+  warm_read        n=720   mean 0.0169  median 0.0089  p95 0.0453
+
+wrote ../supplementary/experimental_results/wsl/results-design/results.json and fused_tree.txt

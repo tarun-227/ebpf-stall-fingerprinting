@@ -1,6 +1,6 @@
 # eBPF-Based Fingerprinting of I/O-Induced Application Stalls
 
-**Operating Systems, Assignment 3**
+**Operating Systems, Assignment A3**
 Tarun Sekar S.D · Karthick Krishna K · Rohit A · Raihan
 
 When an application operation is slow, this tool explains **why**. It traces each operation with eBPF at three kernel layers (system calls, the scheduler and the block I/O layer), splits the operation's wall time into causes, and gives it one label:
@@ -20,11 +20,12 @@ The labels are graded against the kernel's own per-thread accounting (`schedstat
 
 | Deliverable | Location |
 |---|---|
-| IEEE report (PDF) | [`report/report.pdf`](report/report.pdf); also in the [release](https://github.com/tarun-227/ebpf-stall-fingerprinting/releases/latest) |
-| LaTeX source of the report | [`report/`](report/) (`main.tex`, `refs.bib`, `generated/`); also `report-latex.zip` in the release |
-| Code ZIP (source, configs, processed results, raw traces) | `code.zip` in the release |
-| Reproduction guide | [`REPRODUCE.md`](REPRODUCE.md) |
-| Raw traces | `raw-wsl.tar.gz` and `raw-vm.tar.gz` in the release |
+| IEEE report (PDF, 6 pages) | [`latex_report/report.pdf`](latex_report/report.pdf) |
+| LaTeX source of the report | [`latex_report/`](latex_report/): `main.tex`, `references.bib`, `generated/` (tables and plot data), `figures/` |
+| Source code, scripts, configuration, dependencies | [`code/`](code/) (`requirements.txt` lists dependencies and versions) |
+| Reproducibility guide | [`documentation/reproducibility_guide.md`](documentation/reproducibility_guide.md) (and `.pdf`) |
+| Raw traces (datasets) | `supplementary/datasets/` (`raw-wsl.tar.gz`, `raw-vm.tar.gz`) |
+| Processed results | [`supplementary/experimental_results/`](supplementary/experimental_results/) (`wsl/`, `vm/`) |
 
 ---
 
@@ -51,7 +52,7 @@ Main environment: WSL2, kernel 6.6. The evaluation uses 204 runs and 9,792 opera
   - Millisecond-scale operations stay within the 10% budget in WSL.
   - Microsecond operations lose 60–90% of their throughput, mostly to the two marker uprobes (7–10 µs each in WSL, more under nested virtualisation).
 
-Full tables are in the report and in [`experiments/processed/`](experiments/processed/).
+Full tables are in the report and in [`supplementary/experimental_results/`](supplementary/experimental_results/).
 
 ---
 
@@ -74,23 +75,29 @@ stallbench (workload)  --op_begin/op_end markers-->  stalltrace (eBPF + collecto
 
 ---
 
-## Repository layout
+## Folder layout
 
 ```
-src/workloads/stallbench.c      12 test workloads and ground-truth recording (C)
-src/ebpf/stalltrace.bpf.c       eBPF programs (libbpf CO-RE)
-src/ebpf/stalltrace.h           event record shared by kernel and user space
-src/collector/stalltrace.c      loader and collector
-src/correlation/breakdown.py    per-thread timeline and per-operation time split
-src/classifier/                 features, rules, decision tree, evaluation, delay and overhead analysis
-src/report/make_assets.py       generates the report's tables and plot data from the results
-scripts/                        toolchain setup, capability check, dm-delay helper, experiment runners
-tests/                          unit tests (29)
-experiments/configs/eval.json   evaluation settings, fixed before the final runs
-experiments/processed/wsl/      final results (main environment)
-experiments/processed/vm/       robustness results (Ubuntu VM)
-report/                         report PDF (report.pdf) and its LaTeX source
-REPRODUCE.md                    full reproduction guide
+README.md                         this file
+latex_report/                     main.tex, references.bib, report.pdf, generated/, figures/
+code/
+  Makefile                        builds build/stallbench and build/stalltrace
+  requirements.txt                dependencies (Python standard library only) and tool versions
+  configs/eval.json               evaluation settings, fixed before the final runs
+  src/workloads/stallbench.c      12 test workloads and ground-truth recording (C)
+  src/ebpf/                       eBPF programs (libbpf CO-RE) and the shared event record
+  src/collector/stalltrace.c      loader and collector
+  src/correlation/breakdown.py    per-thread timeline and per-operation time split
+  src/classifier/                 features, rules, decision tree, evaluation, delay and overhead analysis
+  src/report/make_assets.py       generates the report's tables and plot data from the results
+  src/label_trace.py              labels the operations of any traced program
+  examples/marked_example.c       how to mark operations in your own program
+  scripts/                        toolchain setup, capability check, dm-delay helper, experiment runners
+  tests/                          unit tests (29)
+documentation/                    reproducibility guide (.md and .pdf)
+supplementary/
+  datasets/                       raw eBPF traces of the final runs (WSL and VM)
+  experimental_results/           processed results behind every number in the report
 ```
 
 ---
@@ -105,11 +112,12 @@ REPRODUCE.md                    full reproduction guide
 | Rebuild the report | a LaTeX distribution with `IEEEtran`, `pgfplots`, `tikz` (or Overleaf) |
 | Build and run the tracer | Linux 5.15+ with BTF (`/sys/kernel/btf/vmlinux`), root, `clang`, `libbpf-dev`, `bpftool`, `gcc`, `make`; `dmsetup` for delay injection. Tested on Ubuntu 24.04 (kernel 6.8) and WSL2 (kernel 6.6). |
 
-### Get the code
+### Get started
+
+All commands run from the `code/` folder.
 
 ```bash
-git clone https://github.com/tarun-227/ebpf-stall-fingerprinting.git
-cd ebpf-stall-fingerprinting
+cd code
 python3 -m unittest discover -s tests        # 29 tests, under a second
 ```
 
@@ -138,33 +146,49 @@ python3 src/correlation/breakdown.py /tmp/run1 /tmp/run1/gt.jsonl --summary
 
 `direct_read` uses `O_DIRECT`, so the data file must be on a disk-backed file system (not `/tmp` on tmpfs). `breakdown.py` prints each operation's time split (run, run queue, I/O wait and so on) next to the kernel's numbers. `stallbench --help` lists the 12 workloads, including `cold_read`, `sync_write`, `mmap_cold`, `cpu_contended` and `mixed`.
 
-### 2. Recompute the evaluation from raw traces (no root)
+### 2. Use it on your own program
 
-Download `raw-wsl.tar.gz` from the release, then run:
+Mark each operation you want labelled with two empty functions, `op_begin(id)` and `op_end(id)`, then trace the program and label its operations. [`code/examples/marked_example.c`](code/examples/marked_example.c) is a complete example (I/O reads, a CPU loop and sleeps):
 
-```bash
-mkdir -p raw && tar xzf raw-wsl.tar.gz -C raw
-python3 src/classifier/features.py raw/final-wsl --out /tmp/features.csv
-python3 src/classifier/evaluate.py /tmp/features.csv \
-        --config experiments/configs/eval.json --out /tmp/results
+```c
+__attribute__((noinline, used)) void op_begin(unsigned long id) { __asm__ volatile("" :: "r"(id)); }
+__attribute__((noinline, used)) void op_end(unsigned long id)   { __asm__ volatile("" :: "r"(id)); }
+/* ... */
+op_begin(1);  /* the code you want checked */  op_end(1);
 ```
 
-The printed table should match `experiments/processed/wsl/results-ref.txt`. The run takes a few minutes, mostly for the bootstrap.
-
-### 3. Rebuild the report tables and PDF
-
 ```bash
-python3 src/report/make_assets.py          # results -> report/generated/*.tex
-cd report && latexmk -pdf main.tex
+gcc -O0 -g my_program.c -o build/my_program
+sudo ./build/stalltrace -o /tmp/myrun -- ./build/my_program
+python3 src/label_trace.py /tmp/myrun
 ```
 
-### 4. Rerun all experiments (Linux, root, about 3–4 hours)
+`label_trace.py` prints one line per operation: how its time split between running, waiting for a CPU, blocked on I/O and blocked otherwise, and its label (`IO_WAIT`, `SCHED_WAIT`, `SYSCALL_CPU` or `INDETERMINATE`), then a summary. If you cannot change the program, run `python3 src/label_trace.py /tmp/myrun --window-ms 20` to label fixed 20 ms windows instead (less accurate). Details: Section 7 of the [reproducibility guide](documentation/reproducibility_guide.md).
+
+### 3. Recompute the evaluation from raw traces (no root)
+
+```bash
+mkdir -p ../raw && tar xzf ../supplementary/datasets/raw-wsl.tar.gz -C ../raw
+python3 src/classifier/features.py ../raw/final-wsl --out /tmp/features.csv
+python3 src/classifier/evaluate.py /tmp/features.csv --config configs/eval.json --out /tmp/results
+```
+
+The printed table should match `supplementary/experimental_results/wsl/results-ref.txt`. The run takes a few minutes, mostly for the bootstrap.
+
+### 4. Rebuild the report tables and PDF
+
+```bash
+python3 src/report/make_assets.py          # results -> ../latex_report/generated/
+cd ../latex_report && latexmk -pdf main.tex
+```
+
+### 5. Rerun all experiments (Linux, root, about 3–4 hours)
 
 ```bash
 sudo scripts/run_final_wsl.sh   # dm-delay test filesystem, final matrix, delay sweep, overhead
 ```
 
-The script works on any Linux host, not only WSL. When no spare disk is available, it backs the delay device with a loop file. [`REPRODUCE.md`](REPRODUCE.md) covers:
+The script works on any Linux host, not only WSL. When no spare disk is available, it backs the delay device with a loop file. The [reproducibility guide](documentation/reproducibility_guide.md) covers:
 - every option;
 - the second-environment (VM) setup, using `scripts/vm_qemu.sh`;
 - the expected output of each step;

@@ -1,0 +1,73 @@
+# Capability report
+date: 2026-11-14T08:27:48Z
+
+## Machine
+          kernel: 6.8.0-147-generic (x86_64)
+          distro: Ubuntu 24.04.5 LTS
+          cpu: Intel(R) Core(TM) i7-1065G7 CPU @ 1.30GHz x 4
+          ram: 3.8Gi
+          virtualisation: kvm
+
+## Block devices
+          NAME     SIZE ROTA TYPE FSTYPE  MOUNTPOINT SCHED
+          fd0        4K    1 disk                    mq-deadline
+          sr0     1024M    1 rom                     mq-deadline
+          vda       25G    1 disk                    none
+          ├─vda1    24G    1 part ext4    /          none
+          ├─vda14    4M    1 part                    none
+          ├─vda15  106M    1 part vfat    /boot/efi  none
+          └─vda16  913M    1 part ext4    /boot      none
+          vdb        4G    1 disk                    none
+          vdc      366K    1 disk iso9660            none
+
+## Kernel config
+[OK]      CONFIG_BPF_SYSCALL=y
+[OK]      CONFIG_DEBUG_INFO_BTF=y
+[OK]      CONFIG_BPF_EVENTS=y
+[OK]      CONFIG_UPROBE_EVENTS=y
+[OK]      CONFIG_BLK_DEV_DM=y
+[OK]      CONFIG_DM_DELAY=m
+
+## BTF
+[OK]      /sys/kernel/btf/vmlinux (CO-RE possible)
+[OK]      task_struct.in_iowait in BTF
+[OK]      task_struct.__state in BTF
+[OK]      BTF tp_btf/sched_switch
+
+## Tracepoints (tracefs: /sys/kernel/tracing)
+[OK]      tracepoint raw_syscalls/sys_enter
+[OK]        field raw_syscalls/sys_enter.id
+[OK]      tracepoint raw_syscalls/sys_exit
+[OK]        field raw_syscalls/sys_exit.id
+[OK]        field raw_syscalls/sys_exit.ret
+[OK]      tracepoint sched/sched_switch
+[OK]        field sched/sched_switch.prev_pid
+[OK]        field sched/sched_switch.prev_state
+[OK]        field sched/sched_switch.next_pid
+[OK]      tracepoint sched/sched_wakeup
+[OK]        field sched/sched_wakeup.pid
+[OK]        field sched/sched_wakeup.target_cpu
+[OK]      tracepoint sched/sched_wakeup_new
+[OK]        field sched/sched_wakeup_new.pid
+[OK]      tracepoint block/block_rq_issue
+[OK]        field block/block_rq_issue.dev
+[OK]        field block/block_rq_issue.sector
+[OK]        field block/block_rq_issue.nr_sector
+[OK]        field block/block_rq_issue.bytes
+[OK]      tracepoint block/block_rq_complete
+[OK]        field block/block_rq_complete.dev
+[OK]        field block/block_rq_complete.sector
+[OK]        field block/block_rq_complete.nr_sector
+[OK]        field block/block_rq_complete.error
+[OK]      tracepoint exceptions/page_fault_user
+[OK]        field exceptions/page_fault_user.address
+[OK]        field exceptions/page_fault_user.error_code
+
+## dm-delay
+[OK]      dm-delay target available
+
+## Test disk
+          no test disk given; rerun with the device name, e.g. sdb
+
+## Summary
+          missing items: 0

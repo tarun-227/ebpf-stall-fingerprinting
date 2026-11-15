@@ -1,4 +1,4 @@
-build/
+code/build/
 .venv/
 __pycache__/
 *.pyc
@@ -8,15 +8,18 @@ experiments/raw/scratch/
 # Reference papers and course handouts stay local (not ours to redistribute).
 /*.pdf
 # LaTeX build output
-report/*.aux
-report/*.log
-report/*.out
-report/*.bbl
-report/*.blg
-report/*.fls
-report/*.fdb_latexmk
-report/main.pdf
+latex_report/*.aux
+latex_report/*.log
+latex_report/*.out
+latex_report/*.bbl
+latex_report/*.blg
+latex_report/*.fls
+latex_report/*.fdb_latexmk
+latex_report/main.pdf
 
 # Packaged deliverables (published as release assets)
 deliverables/
 
+
+# Raw-trace archives: shipped in the submission ZIP, too large for git
+supplementary/datasets/*.tar.gz

@@ -1,0 +1,3 @@
+final        runs  204  events     766242  dropped 4145 (0.5410%)  clock ratio 0.9231-1.0379  drift-flagged runs 26
+delay-sweep  runs  108  events     326663  dropped 0 (0.0000%)  clock ratio 0.9400-1.0214  drift-flagged runs 15
+overhead     runs  230  events   47494020  dropped 15346658 (32.3128%)  clock ratio 0.9231-1.0910  drift-flagged runs 39

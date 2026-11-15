@@ -1,7 +1,7 @@
 # eBPF-Based Fingerprinting of I/O-Induced Application Stalls
 
 **Operating Systems, Assignment A3**
-Tarun Sekar S.D · Karthick Krishna K · Rohit A · Raihan
+Tarun Sekar S.D · Karthik Krishna K · Rohit A · Raihan
 
 When an application operation is slow, this tool explains **why**. It traces each operation with eBPF at three kernel layers (system calls, the scheduler and the block I/O layer), splits the operation's wall time into causes, and gives it one label:
 

@@ -1,7 +1,7 @@
 # Reproducibility guide
 
 **Project:** eBPF-based fingerprinting of I/O-induced application stalls (Operating Systems, Assignment A3).
-**Team:** Tarun Sekar S.D, Karthick Krishna K, Rohit A, Raihan.
+**Team:** Tarun Sekar S.D, Karthik Krishna K, Rohit A, Raihan.
 
 The tool labels each application operation as `IO_WAIT_DOMINATED`, `SCHEDULER_WAIT_DOMINATED`, `SYSCALL_CPU_DOMINATED` or `INDETERMINATE` from syscall, scheduler and block-layer eBPF evidence, and scores those labels against the kernel's own per-thread accounting. This guide explains the code, its dependencies, how to set it up and run it, and how to regenerate every number in the report.
 

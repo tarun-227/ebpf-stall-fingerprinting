@@ -51,7 +51,7 @@ Main environment: WSL2, kernel 6.6. The evaluation uses 204 runs and 9,792 opera
 - **Robustness.** The same experiments were repeated in an Ubuntu 24.04 VM (kernel 6.8, QEMU/KVM). Rules tuned on WSL runs score the same there. A tree trained on WSL without `in_iowait` does not carry over (0.695).
 - **Overhead.**
   - Millisecond-scale operations stay within the 10% budget in WSL.
-  - Microsecond operations lose 60–90% of their throughput, mostly to the two marker uprobes (7–10 µs each in WSL, more under nested virtualisation).
+  - Microsecond operations lose 60–90% of their throughput, mostly to the two marker uprobes (about 14 µs of added CPU per operation in WSL, more under nested virtualisation).
 
 Full tables are in the report and in [`supplementary/experimental_results/`](supplementary/experimental_results/).
 

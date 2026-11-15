@@ -321,7 +321,7 @@ The summary gives the number of operations per label and their share of the trac
 
 **Without markers.** If the program cannot be changed, `python3 src/label_trace.py /tmp/myrun --window-ms 20` labels fixed 20 ms windows of each thread instead. Windows mix operations, so this is less accurate (the report measures macro-F1 0.81–0.90 for 5–100 ms windows, against 0.99 with markers).
 
-**Limits.** The labels are as reliable as in the report only for synchronous work by the waiting thread; asynchronous I/O (`io_uring`, AIO) and work handed to other threads are not attributed. Markers cost about 7–10 µs each, so marking microsecond operations slows them down noticeably.
+**Limits.** The labels are as reliable as in the report only for synchronous work by the waiting thread; asynchronous I/O (`io_uring`, AIO) and work handed to other threads are not attributed. The two markers add about 14 µs of CPU per operation, so marking microsecond operations slows them down noticeably.
 
 ---
 
@@ -369,5 +369,5 @@ The summary gives the number of operations per label and their share of the trac
 - **Disk cache:** WSL's virtual disk is cached by Windows, so `cold_read` without `dm-delay` is often served from memory. Always run on the delay mount.
 - **Raw output location:** keep `RAW_DIR` on the Linux file system (`/home/...`), not `/mnt/c`; writing to the Windows drive is slow enough to cause dropped events.
 - **Overhead is noisy in virtual machines:** a second untraced `direct_read` run differed from the first by 41%. Compare CPU per operation as well as throughput.
-- **Marker cost:** each uprobe costs about 7–10 µs in WSL (more under nested virtualisation). For microsecond operations tracing costs 60–90% throughput; use PID-only windows (`--window-ms`) or disable markers (`-M`) there, at a cost in accuracy.
+- **Marker cost:** the two marker uprobes add about 14 µs of CPU per operation in WSL (more under nested virtualisation). For microsecond operations tracing costs 60–90% throughput; use PID-only windows (`--window-ms`) or disable markers (`-M`) there, at a cost in accuracy.
 - **Scope:** synchronous I/O by the waiting thread. Asynchronous I/O (`io_uring`, AIO) is not attributed.

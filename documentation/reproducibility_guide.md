@@ -25,7 +25,7 @@ latex_report/
   main.tex, references.bib         IEEE conference report source
   report.pdf                       compiled report (6 pages)
   generated/                       tables (*.tex) and plot data (*.dat) that main.tex inputs
-  figures/                         the report's three figures as PNG images (the PDF draws them from generated/)
+  figures/                         the report's 3 figures as PNG (main.tex draws them itself)
 code/
   Makefile                         builds build/stallbench and build/stalltrace
   requirements.txt                 dependencies (Python: standard library only) and tool versions
@@ -37,19 +37,19 @@ code/
   src/correlation/breakdown.py     per-thread state timeline, per-operation time split
   src/classifier/features.py       raw run -> one feature row per operation (+ reference label)
   src/classifier/models.py         rules and decision tree (pure-Python CART), feature sets
-  src/classifier/evaluate.py       run-level split, metrics, bootstrap CIs, H1, H2, ablations, transfer
+  src/classifier/evaluate.py       run-level split, metrics, CIs, H1, H2, ablations, transfer
   src/classifier/delay_analysis.py injected-delay sweep analysis
   src/classifier/overhead.py       tracing on vs off: throughput, p99, CPU per op, drops
   src/report/make_assets.py        writes ../latex_report/generated/ from the results
   src/label_trace.py               labels the operations of any traced program (Section 7)
   examples/marked_example.c        how to mark operations in your own program
-  scripts/                         setup, capability check, dm-delay helper, experiment runners, analysis, VM helper
+  scripts/                         setup, checks, dm-delay, experiment runners, analysis, VM
   tests/                           unit tests (29)
 documentation/
   reproducibility_guide.md / .pdf  this guide
 supplementary/
-  datasets/raw-wsl.tar.gz          raw traces, main environment: final-wsl (204 runs), delay-sweep-wsl (108 runs)
-  datasets/raw-vm.tar.gz           raw traces, robustness VM: final-vm (204 runs), delay-sweep-vm (108 runs)
+  datasets/raw-wsl.tar.gz          raw traces, WSL: final-wsl (204 runs), delay-sweep-wsl (108)
+  datasets/raw-vm.tar.gz           raw traces, VM: final-vm (204 runs), delay-sweep-vm (108)
   experimental_results/wsl/        processed results behind every number in the report
   experimental_results/vm/         processed results of the robustness VM
 ```
@@ -101,10 +101,14 @@ python3 -m unittest discover -s tests        # 29 tests, about 1 second; checks 
 That is all levels A and B need. For level C, on Ubuntu 24.04 (root):
 
 ```bash
-sudo scripts/setup_vm.sh              # installs clang, llvm, libbpf-dev, bpftool, dmsetup, build tools
-make                                  # builds build/stallbench and build/stalltrace
-sudo scripts/check_capabilities.sh    # checks BTF, tracepoints and their fields, dm-delay; writes experiments/env/
-sudo scripts/smoke_test.sh            # loads the eBPF programs, runs 3 workloads, compares with the kernel
+# install clang, llvm, libbpf-dev, bpftool, dmsetup and the build tools
+sudo scripts/setup_vm.sh
+# build build/stallbench and build/stalltrace
+make
+# check BTF, tracepoints and their fields, dm-delay (report in experiments/env/)
+sudo scripts/check_capabilities.sh
+# load the eBPF programs, run 3 workloads, compare with the kernel's accounting
+sudo scripts/smoke_test.sh
 ```
 
 In WSL, `linux-tools-$(uname -r)` does not exist; install `linux-tools-generic` instead (the Makefile finds its `bpftool`). The smoke test must report 0 dropped events and a traced time split within a few percent of the kernel's for `sleep`, `direct_read` and `cpu_contended`.
@@ -134,7 +138,8 @@ For the report: `sudo apt-get install texlive-latex-extra texlive-publishers tex
 ## 5. Level A: regenerate the report tables and compile
 
 ```bash
-python3 src/report/make_assets.py      # reads ../supplementary/experimental_results/{wsl,vm}, writes ../latex_report/generated/
+# read ../supplementary/experimental_results/{wsl,vm}, write ../latex_report/generated/
+python3 src/report/make_assets.py
 cd ../latex_report && latexmk -pdf main.tex
 ```
 
@@ -155,7 +160,8 @@ To recompute only the main evaluation (a few minutes):
 
 ```bash
 python3 src/classifier/features.py ../raw/final-wsl --out /tmp/features.csv
-python3 src/classifier/evaluate.py /tmp/features.csv --config configs/eval.json --out /tmp/results
+python3 src/classifier/evaluate.py /tmp/features.csv \
+    --config configs/eval.json --out /tmp/results
 ```
 
 **Expected output** (identical to the shipped files, because the bootstrap seed is fixed):
@@ -175,8 +181,9 @@ The robustness VM results are recomputed the same way from `raw-vm.tar.gz`:
 mkdir -p ../raw && tar xzf ../supplementary/datasets/raw-vm.tar.gz -C ../raw
 OUT=../supplementary/experimental_results/vm
 python3 src/classifier/features.py ../raw/final-vm --out $OUT/features.csv
-python3 src/classifier/evaluate.py $OUT/features.csv --config configs/eval.json --out $OUT/results-ref \
-    --train-from ../supplementary/experimental_results/wsl/features.csv > $OUT/results-ref.txt
+python3 src/classifier/evaluate.py $OUT/features.csv --config configs/eval.json \
+    --out $OUT/results-ref --train-from \
+    ../supplementary/experimental_results/wsl/features.csv > $OUT/results-ref.txt
 python3 src/classifier/features.py ../raw/delay-sweep-vm --out /tmp/vm-delay.csv
 python3 src/classifier/delay_analysis.py /tmp/vm-delay.csv --out $OUT/delay.json
 ```
@@ -186,10 +193,14 @@ Expected: rules/fused 0.971 [0.958, 0.980]; trained on WSL, tree/fused without i
 Useful single commands:
 
 ```bash
-python3 src/classifier/evaluate.py /tmp/features.csv --config configs/eval.json --out /tmp/res-d --truth expected   # design label
-python3 src/classifier/features.py ../raw/final-wsl --out /tmp/w20.csv --window-ms 20                              # PID-only windows
+# score against the design label instead of the reference label
+python3 src/classifier/evaluate.py /tmp/features.csv --config configs/eval.json \
+    --out /tmp/res-d --truth expected
+# PID-only mode: fixed 20 ms windows instead of markers
+python3 src/classifier/features.py ../raw/final-wsl --out /tmp/w20.csv --window-ms 20
+# time split of every operation in one run
 R=../raw/final-wsl/direct_read-t4-io64k-seq-d2ms-r3
-python3 src/correlation/breakdown.py $R $R/gt.jsonl --summary                                                       # time split of one run
+python3 src/correlation/breakdown.py $R $R/gt.jsonl --summary
 ```
 
 ---
@@ -199,7 +210,8 @@ python3 src/correlation/breakdown.py $R $R/gt.jsonl --summary                   
 After the setup in Section 3:
 
 ```bash
-sudo scripts/run_final_wsl.sh            # base directory defaults to /home/$SUDO_USER/stalltest
+# base directory defaults to /home/$SUDO_USER/stalltest
+sudo scripts/run_final_wsl.sh
 ```
 
 Despite its name, the script works on any Linux host. It runs, in order:
@@ -213,7 +225,8 @@ Despite its name, the script works on any Linux host. It runs, in order:
 `STEPS="check matrix sweep overhead smoke"` selects steps. The log goes to `<base>/final-run.log`. Results are never overwritten: a rerun with an existing id stops. Then analyse:
 
 ```bash
-OVERHEAD_ID=overhead-wsl-v2 OVERHEAD_OUT=overhead-v2 scripts/analyse_results.sh /home/$USER/stalltest/raw wsl
+OVERHEAD_ID=overhead-wsl-v2 OVERHEAD_OUT=overhead-v2 \
+    scripts/analyse_results.sh /home/$USER/stalltest/raw wsl
 ```
 
 ### Robustness VM
@@ -232,7 +245,8 @@ Copy `code/` into the VM, then inside it (`vdb` is the 4 GB test disk, host cach
 sudo scripts/setup_vm.sh && make && sudo scripts/check_capabilities.sh
 sudo scripts/dm_delay.sh create vdb 0
 sudo scripts/dm_delay.sh format --wipe vdb         # DESTROYS vdb
-sudo env STEPS="check matrix sweep overhead" OVERHEAD_ID=overhead-vm scripts/run_final_wsl.sh ~/stalltest
+sudo env STEPS="check matrix sweep overhead" OVERHEAD_ID=overhead-vm \
+    scripts/run_final_wsl.sh ~/stalltest
 ```
 
 The script names its outputs `final-wsl` and `delay-sweep-wsl`; rename them to `final-vm` and `delay-sweep-vm`, copy them out, and analyse as in Section 6. The runs take about 25 minutes.

@@ -54,6 +54,8 @@ supplementary/
   datasets/raw-vm.tar.gz           raw traces, VM: final-vm (204 runs), delay-sweep-vm (108)
   experimental_results/wsl/        processed results behind every number in the report
   experimental_results/vm/         processed results of the robustness VM
+  additional_figures/              images of command outputs: tests, evaluation rerun, label_trace.py,
+                                   breakdown.py, capability check, smoke test, live example
 ```
 
 The raw traces of the overhead runs (1.6 GB for WSL) are not included because of their size. Their processed results (`experimental_results/wsl/overhead-v2.json`, `experimental_results/vm/overhead.json`) are included, and level C regenerates the raw data.

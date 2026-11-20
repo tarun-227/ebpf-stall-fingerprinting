@@ -27,6 +27,7 @@ The labels are graded against the kernel's own per-thread accounting (`schedstat
 | Reproducibility guide | [`documentation/reproducibility_guide.md`](documentation/reproducibility_guide.md) (and `.pdf`) |
 | Raw traces (datasets) | `supplementary/datasets/` (`raw-wsl.tar.gz`, `raw-vm.tar.gz`) |
 | Processed results | [`supplementary/experimental_results/`](supplementary/experimental_results/) (`wsl/`, `vm/`) |
+| Run outputs | [`supplementary/additional_figures/`](supplementary/additional_figures/): images of the unit tests, evaluation rerun, smoke test, capability check and live examples |
 
 ---
 
@@ -100,6 +101,7 @@ documentation/                    reproducibility guide (.md and .pdf)
 supplementary/
   datasets/                       raw eBPF traces of the final runs (WSL and VM)
   experimental_results/           processed results behind every number in the report
+  additional_figures/             images of command outputs (tests, evaluation, smoke test, live example)
 ```
 
 ---

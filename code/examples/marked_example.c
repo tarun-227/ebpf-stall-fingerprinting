@@ -16,7 +16,7 @@
  *   python3 src/label_trace.py /tmp/example_run
  *
  * This example does three kinds of operation, five times each:
- *   ids 0-4    read 4 MiB with O_DIRECT (bypasses the page cache) -> IO_WAIT
+ *   ids 0-4    read 64 KiB with O_DIRECT (bypasses the page cache) -> IO_WAIT
  *   ids 10-14  a 20 ms busy loop                                   -> SYSCALL_CPU
  *   ids 20-24  sleep 20 ms                                          -> INDETERMINATE
  *              (blocked, but not on I/O: the tool does not guess)
@@ -35,7 +35,8 @@ __attribute__((noinline, used)) void op_begin(uint64_t id) { __asm__ volatile(""
 __attribute__((noinline, used)) void op_end(uint64_t id) { __asm__ volatile("" ::"r"(id)); }
 /* -------------------------------------------------------- */
 
-#define CHUNK (4u << 20)
+#define CHUNK (4u << 20)       /* data file: 5 chunks */
+#define READ_SZ (64u << 10)    /* each read operation */
 
 static double now_ms(void)
 {
@@ -63,7 +64,7 @@ int main(int argc, char **argv)
 	if (fd < 0) { perror("open O_DIRECT (use a disk-backed file system, not tmpfs)"); return 1; }
 	for (uint64_t i = 0; i < 5; i++) {
 		op_begin(i);
-		if (pread(fd, buf, CHUNK, (off_t)(i * CHUNK)) < 0) perror("pread");
+		if (pread(fd, buf, READ_SZ, (off_t)(i * CHUNK)) < 0) perror("pread");
 		op_end(i);
 	}
 	close(fd);
